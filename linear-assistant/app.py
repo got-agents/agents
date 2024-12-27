@@ -1,17 +1,18 @@
 import json
 import logging
-from enum import Enum
-import os
 from fastapi import BackgroundTasks, FastAPI
 from baml_client import b
-from baml_client.types import HumanResponse, Thread, Event, EmailPayload as BamlEmailPayload
+from baml_client.types import (
+    CreateIssue,
+    HumanResponse,
+    Thread,
+    Event,
+    EmailPayload as BamlEmailPayload,
+)
 from typing import Any, Dict
-from linear import LinearClient, get_linear_client
-import marvin
+from linear import get_linear_client
 
-
-from pydantic import BaseModel
-from humanlayer import AsyncHumanLayer, FunctionCall, HumanContact
+from humanlayer import AsyncHumanLayer, EmailContactChannel, FunctionCall, HumanContact
 from humanlayer.core.models import ContactChannel, HumanContactSpec, FunctionCallSpec
 from humanlayer.core.models_agent_webhook import EmailPayload
 
@@ -39,11 +40,64 @@ def from_state(state: dict) -> Thread:
     return Thread.model_validate(state)
 
 
+def to_prompt(thread: Thread) -> str:
+    """
+    Convert the thread state to a prompt string
+    """
+    newline = "\n"
+    return f"""
+    Events:
+        {newline.join([event_to_prompt(event) for event in thread.events])}
+    """
+
+
+def event_to_prompt(event: Event) -> str:
+    """
+    Convert an event to a prompt string, in ways that are way more token-efficient than json.dumps
+
+    guessing xml-ish here is fine but need to test / eval
+    """
+    if isinstance(event.data, EmailPayload):
+        return f"""<{event.type}>
+            From: {event.data.from_address}
+            To: {event.data.to_address}
+            Subject: {event.data.subject}
+            Body: {event.data.body}
+</{event.type}>
+        """
+    elif isinstance(event.data, HumanResponse):
+        return f"""<{event.type}>
+            Message: {event.data.message}
+</{event.type}>
+        """
+    elif isinstance(event.data, CreateIssue):
+        return f"""<{event.type}>
+            Title: {event.data.issue.title}
+            Description: {event.data.issue.description}
+            Team ID: {event.data.issue.team_id}
+</{event.type}>
+        """
+    elif isinstance(event.data, str):
+        return f"""<{event.type}>
+            {event.data}
+</{event.type}>
+        """
+    else:  # todo more types
+        return f"""<{event.type}>
+            {event.data.model_dump_json()}
+        </{event.type}>
+        """
+
+
 async def handle_continued_thread(thread: Thread) -> None:
-    # its dumb that we have to cast this, can probably just remove the need to duplicate the HL type into our baml schema
-    casted: EmailPayload = EmailPayload.model_validate(thread.initial_email.model_dump_json())
     humanlayer = AsyncHumanLayer(
-        contact_channel=ContactChannel(email=casted.as_channel())
+        contact_channel=ContactChannel(
+            email=EmailContactChannel.in_reply_to(
+                from_address=thread.initial_email.from_address,
+                subject=thread.initial_email.subject,
+                message_id=thread.initial_email.message_id,
+            )
+        )
     )
 
     # maybe: if thread gets too long, summarize parts of it - your call!
@@ -54,17 +108,21 @@ async def handle_continued_thread(thread: Thread) -> None:
     )
 
     while True:
-        next_step = await b.DetermineNextStep(thread)
+        next_step = await b.DetermineNextStep(to_prompt(thread))
         logger.info(f"next step: {next_step.intent}")
 
+        # contact a human for more input
         if next_step.intent == "request_more_information":
             logger.info(f"requesting more information: {next_step.message}")
             thread.events.append(Event(type="request_more_information", data=next_step))
             await humanlayer.create_human_contact(
                 spec=HumanContactSpec(msg=next_step.message, state=to_state(thread))
             )
-            logger.info("thread sent to humanlayer. Last event: request_more_information")
+            logger.info(
+                "thread sent to humanlayer. Last event: request_more_information"
+            )
             break
+        # requires approval
         elif next_step.intent == "create_issue":
             logger.info(f"drafted issue: {next_step.model_dump_json()}")
             thread.events.append(Event(type="create_issue", data=next_step))
@@ -72,10 +130,12 @@ async def handle_continued_thread(thread: Thread) -> None:
                 spec=FunctionCallSpec(
                     fn="create_issue",
                     kwargs=next_step.model_dump(),
+                    state=to_state(thread),
                 )
             )
             logger.info("thread sent to humanlayer. Last event: create_issue")
             break
+        # does not require approval
         elif next_step.intent == "list_issues":
             logger.info(f"listing issues: {next_step.model_dump_json()}")
             thread.events.append(Event(type="list_issues", data=next_step))
@@ -88,36 +148,54 @@ async def handle_continued_thread(thread: Thread) -> None:
             )
             continue
 
+        # does not require approval
         elif next_step.intent == "list_teams":
             logger.info(f"listing teams: {next_step.model_dump_json()}")
             thread.events.append(Event(type="list_teams", data=next_step))
+            client = get_linear_client()
             teams = client.list_all_teams()
             thread.events.append(
                 Event(type="list_teams_result", data=json.dumps(teams))
             )
             continue
+        elif next_step.intent == "done_for_now":
+            logger.info(f"done for now: {next_step.model_dump_json()}")
+            thread.events.append(Event(type="done_for_now", data=next_step))
+            await humanlayer.create_human_contact(
+                spec=HumanContactSpec(msg=next_step.message, state=to_state(thread))
+            )
+            logger.info("thread sent to humanlayer. Last event: done_for_now")
+            break
         else:
             raise ValueError(f"unknown intent: {next_step.intent}")
 
 
 @app.post("/webhook/new-email-thread")
 async def email_inbound(
-    email_payload: EmailPayload, background_tasks: BackgroundTasks
+    email_payload: dict[str, Any], background_tasks: BackgroundTasks
 ) -> Dict[str, Any]:
     """
     route to kick off new processing thread from an email
     """
     # test payload
     if (
-        email_payload.is_test
-        or email_payload.from_address == "overworked-admin@coolcompany.com"
+        email_payload.get("is_test")
+        or email_payload.get("from_address") == "overworked-admin@coolcompany.com"
     ):
         logger.info("test payload received, skipping")
         return {"status": "ok"}
 
-    logger.info(f"inbound email received: {email_payload.model_dump_json()}")
-    thread = Thread(initial_email=BamlEmailPayload.model_validate(email_payload.model_dump_json()), events=[])
-    thread.events.append(Event(type="email_received", data=email_payload))
+    # logger.info(f"inbound email received: {email_payload.model_dump_json()}")
+    logger.info(f"inbound email received: {json.dumps(email_payload)}")
+    thread = Thread(
+        initial_email=BamlEmailPayload.model_validate(email_payload),
+        events=[
+            Event(
+                type="email_received",
+                data=BamlEmailPayload.model_validate(email_payload),
+            ),
+        ],
+    )
 
     background_tasks.add_task(handle_continued_thread, thread)
 
@@ -138,7 +216,11 @@ async def human_response(
         # decide what's the right way to handle this? probably logger.warn and proceed
         raise ValueError("state is required")
 
+    logger.info(f"human_response received: {human_response.model_dump_json()}")
+
     if isinstance(human_response, HumanContact):
+        assert human_response.status is not None
+        assert human_response.status.response is not None
         thread.events.append(
             Event(
                 type="human_response",
@@ -154,12 +236,15 @@ async def human_response(
         if human_response.spec.fn != "create_issue":
             raise ValueError(f"unknown function call: {human_response.spec.fn}")
 
+        assert human_response.status is not None
+        assert human_response.status.approved is not None
+
         if human_response.status.approved:
             client = get_linear_client()
             issue = client.create_issue(
-                title=human_response.spec.kwargs["title"],
-                description=human_response.spec.kwargs["description"],
-                team_id=human_response.spec.kwargs["team_id"],
+                title=human_response.spec.kwargs["issue"]["title"],
+                description=human_response.spec.kwargs["issue"]["description"],
+                team_id=human_response.spec.kwargs["issue"]["team_id"],
             )
             thread.events.append(
                 Event(type="issue_create_result", data=json.dumps(issue))
@@ -171,7 +256,7 @@ async def human_response(
                 Event(
                     type="human_response",
                     data="User denied create_issue with feedback: "
-                    + human_response.status.comment,
+                    + str(human_response.status.comment),
                 )
             )
             # resume from here

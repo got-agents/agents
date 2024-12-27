@@ -1,6 +1,9 @@
 import os
 from typing import Dict, Optional, Any
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # todo asyncify me
@@ -18,7 +21,7 @@ class LinearClient:
         self.api_key = api_key
         self.session = requests.Session()
         self.session.headers.update(
-            {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            {"Authorization": f"{api_key}", "Content-Type": "application/json"}
         )
 
     def _make_request(
@@ -41,6 +44,7 @@ class LinearClient:
             payload["variables"] = variables
 
         response = self.session.post(self.BASE_URL, json=payload)
+        logger.info(f"linear response: {response.json()}")
         response.raise_for_status()
         return response.json()
 
