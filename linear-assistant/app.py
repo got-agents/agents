@@ -1,16 +1,19 @@
 import json
 import logging
 from fastapi import BackgroundTasks, FastAPI
+from requests import HTTPError
 from baml_client import b
 from baml_client.types import (
     CreateIssue,
     HumanResponse,
+    ListLabels,
     Thread,
     Event,
     EmailPayload as BamlEmailPayload,
+    ListUsers,
 )
 from typing import Any, Dict
-from linear import get_linear_client
+from linear import LinearGraphQLError, get_linear_client
 
 from humanlayer import AsyncHumanLayer, EmailContactChannel, FunctionCall, HumanContact
 from humanlayer.core.models import ContactChannel, HumanContactSpec, FunctionCallSpec
@@ -63,6 +66,7 @@ def event_to_prompt(event: Event) -> str:
             To: {event.data.to_address}
             Subject: {event.data.subject}
             Body: {event.data.body}
+            Previous Thread: {[event.data.previous_thread]}
 </{event.type}>
         """
     elif isinstance(event.data, HumanResponse):
@@ -75,11 +79,22 @@ def event_to_prompt(event: Event) -> str:
             Title: {event.data.issue.title}
             Description: {event.data.issue.description}
             Team ID: {event.data.issue.team_id}
+            URL: {event.data.issue.url if hasattr(event.data.issue, 'url') else 'Not created yet'}
 </{event.type}>
         """
     elif isinstance(event.data, str):
         return f"""<{event.type}>
             {event.data}
+</{event.type}>
+        """
+    elif isinstance(event.data, ListUsers):
+        return f"""<{event.type}>
+            Team ID: {event.data.team_id if event.data.team_id else 'All Teams'}
+</{event.type}>
+        """
+    elif isinstance(event.data, ListLabels):
+        return f"""<{event.type}>
+            Team ID: {event.data.team_id if event.data.team_id else 'All Teams'}
 </{event.type}>
         """
     else:  # todo more types
@@ -158,6 +173,25 @@ async def handle_continued_thread(thread: Thread) -> None:
                 Event(type="list_teams_result", data=json.dumps(teams))
             )
             continue
+        elif next_step.intent == "list_labels":
+            logger.info(f"listing labels: {next_step.model_dump_json()}")
+            thread.events.append(Event(type="list_labels", data=next_step))
+            client = get_linear_client()
+            labels = client.list_labels(team_id=next_step.team_id)
+            thread.events.append(
+                Event(type="list_labels_result", data=json.dumps(labels))
+            )
+            continue
+        elif next_step.intent == "list_users":
+            logger.info(f"listing users: {next_step.model_dump_json()}")
+            thread.events.append(Event(type="list_users", data=next_step))
+            client = get_linear_client()
+            users = client.list_users(team_id=next_step.team_id)
+            thread.events.append(
+                Event(type="list_users_result", data=json.dumps(users))
+            )
+            continue
+        # done, send to humanlayer in case user has more to say
         elif next_step.intent == "done_for_now":
             logger.info(f"done for now: {next_step.model_dump_json()}")
             thread.events.append(Event(type="done_for_now", data=next_step))
@@ -241,14 +275,19 @@ async def human_response(
 
         if human_response.status.approved:
             client = get_linear_client()
-            issue = client.create_issue(
-                title=human_response.spec.kwargs["issue"]["title"],
-                description=human_response.spec.kwargs["issue"]["description"],
-                team_id=human_response.spec.kwargs["issue"]["team_id"],
-            )
-            thread.events.append(
-                Event(type="issue_create_result", data=json.dumps(issue))
-            )
+            try:
+                issue = client.create_issue(
+                    title=human_response.spec.kwargs["issue"]["title"],
+                    description=human_response.spec.kwargs["issue"]["description"],
+                    team_id=human_response.spec.kwargs["issue"]["team_id"],
+                )
+                thread.events.append(
+                    Event(type="issue_create_result", data=json.dumps(issue))
+                )
+            except (HTTPError, LinearGraphQLError) as e:
+                logger.error(f"Error creating issue: {e}")
+                thread.events.append(Event(type="error", data=e.response.text))
+
             # resume from here
             background_tasks.add_task(handle_continued_thread, thread)
         elif human_response.status.approved is False:
