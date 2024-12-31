@@ -5,18 +5,23 @@ class ClarificationRequest {
 
 class CreateIssue {
     intent "create_issue"
-    issue Issue
+    issue CreateIssueRequest
 }
 
 class ListTeams {
     intent "list_teams"
-    teams string[]
 }
 
 class ListIssues {
-    intent "list_issues"
+    
+    intent "list_issues" @description("List issues from a given time range")
     from_time string
     to_time string
+}
+
+class ListUsers {
+    intent "list_users" @description("list users on a team, or all users if no team_id is provided")
+    team_id string?
 }
 
 class DoneForNow {
@@ -24,17 +29,41 @@ class DoneForNow {
     message string
 }
 
+class ListLabels {
+    intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided")
+    team_id string?
+}
+
+class Label {
+    id string
+    name string
+}
+
 class HumanResponse {
     event_type "human_response"
     message string
 }
 
+class CreateIssueRequest {
+    title string
+    description string
+    team_id string
+    // labels_ids string[] @description("ids of labels to apply to the issue - must have at least one label")
+    priority int? @description(#"
+        The priority of the issue. 
+        0 = No priority, 1 = Urgent, 2 = High, 3 = Normal, 4 = Low.
+  "#)
+}
 
 class Issue {
     id string?
     title string
     description string
     team_id string
+    url string
+    labels Label[]
+    priority string
+    state string
 }
 
 class EmailMessage {
@@ -58,8 +87,8 @@ class EmailPayload {
 }
 
 class Event {
-    type "email_received" | "human_response" | "issue_create_result" | "list_teams_result" | "list_issues_result" | "request_more_information" | "create_issue" | "done_for_now" | "list_teams" | "list_issues"
-    data EmailPayload | HumanResponse | ClarificationRequest | CreateIssue | ListTeams | ListIssues | DoneForNow | string // escape hatch for untyped data from linear client
+    type "email_received" | "human_response" | "issue_create_result" | "list_teams_result" | "list_issues_result" | "request_more_information" | "create_issue" | "done_for_now" | "list_teams" | "list_users" | "list_issues" | "list_users_result" | "list_labels" | "list_labels_result" | "error"
+    data EmailPayload | HumanResponse | ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | ListLabels | DoneForNow | string // escape hatch for untyped data from linear client
 }
 
 
@@ -71,7 +100,7 @@ class Thread {
 
 function DetermineNextStep(
     thread: string // to keep this clean, make the client turn the thread into a prompt-ready string, didn't wanna solve that in jinja (although long term that's probably the best solution)
-) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | DoneForNow {
+) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow {
     client CustomGPT4o
     prompt #"
         {{ _.role("system") }}
@@ -114,24 +143,24 @@ test TeamIDErrorAsksForMoreInput {
     thread #"
       
           Events:
-              <email_received>: 
+              <email_received>:
                   {"from_address":"test@example.com","to_address":"support@company.com","subject":"New Ticket","body":"Can you make a new issue for Austin to restock the fridges with tasty beers?","message_id":"test123","previous_thread":[],"raw_email":"raw email content","is_test":null}
               </email_received>
               
-      <create_issue>: 
+      <create_issue> 
                   Title: Restock fridges with tasty beers
                   Description: Austin is requested to restock the fridges with tasty beers.
                   Team ID: team_supply_maintenance
               </create_issue>
               
       <issue_create_result>: 
-                  {"errors": [{"message": "Argument Validation Error", "path": ["issueCreate"], "locations": [{"line": 3, "column": 13}], "extensions": {"code": "INVALID_INPUT", "type": "invalid input", "userError": true, "userPresentableMessage": "teamId must be a UUID.", "meta": {}}}], "data": null}
+                  {"errors": [{"message": "Argument Validation Error", "path": ["issueCreate"], "locations": [{"line": 3, "column": 13}], "extensions": {"code": "INVALID_INPUT", "type": "invalid input", "userError": true, "userPresentableMessage": "teamId must be a UUID.", "meta": {}}}], "data: null}"
               </issue_create_result>
               
           
     "#
   }
-  @@assert({{this.intent == "request_more_information"}})
+  @@assert({{this.intent == "list_teams"}})
 }
 
 

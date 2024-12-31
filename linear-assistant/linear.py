@@ -1,9 +1,15 @@
 import os
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import requests
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class LinearGraphQLError(Exception):
+    def __init__(self, message: str, response: requests.Response):
+        super().__init__(message)
+        self.response = response
 
 
 # todo asyncify me
@@ -39,13 +45,15 @@ class LinearClient:
         Raises:
             requests.exceptions.RequestException: If the request fails
         """
-        payload = {"query": query}
+        payload: Dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
 
         response = self.session.post(self.BASE_URL, json=payload)
         logger.info(f"linear response: {response.json()}")
         response.raise_for_status()
+        if response.json().get("errors"):
+            raise LinearGraphQLError(f"{response.json()}", response=response)
         return response.json()
 
     def get_all_issues_assigned_to_user(self, email: str) -> Dict[str, Any]:
@@ -78,6 +86,7 @@ class LinearClient:
                 id
                 title
                 description
+                url
                 assignee {
                     name
                 }
@@ -150,19 +159,27 @@ class LinearClient:
         )
 
     def create_issue(
-        self, title: str, description: str, team_id: Optional[str] = None
+        self,
+        title: str,
+        description: str,
+        team_id: Optional[str] = None,
+        labels_ids: Optional[List[str]] = None,
+        priority: Optional[str] = None,
+        state: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new issue with the given title and description."""
         if not team_id:
             team_id = self.get_default_team_id()
 
         query = """
-        mutation CreateIssue($title: String!, $description: String!, $teamId: String!) {
+        mutation CreateIssue($title: String!, $description: String!, $teamId: String!, $labelsIds: [String!], $priority: Int) {
             issueCreate(
                 input: {
                     title: $title,
                     description: $description,
-                    teamId: $teamId
+                    teamId: $teamId,
+                    labelsIds: $labelsIds,
+                    priority: $priority,
                 }
             ) {
                 success
@@ -170,13 +187,20 @@ class LinearClient:
                     id
                     title
                     description
+                    url
                 }
             }
         }
         """
         return self._make_request(
             query,
-            variables={"title": title, "description": description, "teamId": team_id},
+            variables={
+                "title": title,
+                "description": description,
+                "teamId": team_id,
+                "labelsIds": labels_ids,
+                "priority": priority,
+            },
         )
 
     def assign_issue(self, issue_id: str, email: str) -> Dict[str, Any]:
@@ -205,6 +229,7 @@ class LinearClient:
                 issue {
                     id
                     title
+                    url
                     assignee {
                         id
                         name
@@ -275,6 +300,50 @@ class LinearClient:
         }
         """
         return self._make_request(query, variables={"dueDate": due_date})
+
+    def list_users(self, team_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List users, optionally filtered by team_id
+        """
+        query = """
+        query ListUsers($teamId: String) {
+            users(filter: { team: { id: { eq: $teamId } } }) {
+                nodes {
+                    id
+                    name
+                    email
+                    displayName
+                    avatarUrl
+                    active
+                }
+            }
+        }
+        """
+        variables = {"teamId": team_id} if team_id else {}
+
+        response = self._make_request(query, variables)
+        return response["users"]["nodes"]
+
+    def list_labels(self, team_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List labels, optionally filtered by team_id
+        """
+        query = """
+        query ListLabels($teamId: ID) {
+            IssueLabels(filter: { team: { id: { eq: $teamId } } }) {
+                nodes {
+                    id
+                    name
+                    team {
+                        id
+                    }
+                }
+            }
+        }
+        """
+        variables = {"teamId": team_id} if team_id else {}
+        response = self._make_request(query, variables)
+        return response["issueLabels"]["nodes"]
 
 
 # client = LinearClient(api_key="linear_key")
