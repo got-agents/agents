@@ -53,6 +53,14 @@ client<llm> OpenaiFallback {
   }
 }
 
+client<llm> Sonnet36 {
+  provider fallback
+  options {
+    // This will try the clients in order until one succeeds
+    strategy [CustomSonnet, CustomGPT4o]
+  }
+}
+
 // https://docs.boundaryml.com/docs/snippets/clients/retry
 retry_policy Constant {
   max_retries 3
