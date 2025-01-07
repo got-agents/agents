@@ -1,4 +1,0 @@
-Linear Assistant
-============
-
-Status: WIP

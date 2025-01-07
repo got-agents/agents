@@ -6,10 +6,7 @@ import { LinearClient, LinearFetch, User } from "@linear/sdk";
 import * as yaml from 'js-yaml';
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY });
-
-async function getCurrentUser(): LinearFetch<User> {
-  return linearClient.viewer;
-}
+const debug: boolean = !!process.env.DEBUG;
 
 function stringifyToYaml(obj: any): string {
   // Custom replacer function to ignore functions
@@ -371,6 +368,9 @@ app.post('/webhook/new-email-thread', async (req: Request, res: Response) => {
 
 app.post('/webhook/human-response-on-existing-thread', async (req: Request, res: Response) => {
   const humanResponse = req.body;
+  if (debug) {
+    console.log(`${JSON.stringify(humanResponse)}`);
+  }
 
   if (!humanResponse.spec.state) {
     throw new Error('state is required');
@@ -400,6 +400,13 @@ app.get('/health', async (req: Request, res: Response) => {
     default:
       res.json({ status: 'ok' });
   }
+});
+
+app.get('/', async (req: Request, res: Response) => {
+  res.json({
+    welcome: 'to the linear assistant',
+    instructions: 'https://github.com/got-agents/agents',
+  });
 });
 
 app.listen(port, () => {

@@ -47,16 +47,19 @@ class CreateIssueRequest {
 // Sync Steps - no interaction
 //
 class ListTeams {
-  intent "list_teams"
+  intent "list_teams" // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation")
 }
 
 class ListProjects {
-  intent "list_projects"
+  intent "list_projects" // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string? @description("list projects for a given team, or all projects if no team_id is provided")
 }
 
 class ListIssues {
-  intent "list_issues" @description("List issues from a given time range")
+  intent "list_issues" @description("List issues from a given time range") // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   filter IssueFilter?
   after string? @description("ISO date string")
   before string? @description("ISO date string")
@@ -82,23 +85,27 @@ class StringComparator {
 }
 
 class SearchIssues {
-  intent "search_issues" @description("Search issues by title, description, or assignee")
-  query string @description("")
+  intent "search_issues" @description("Search issues by title, description, or assignee") // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
+  query string @description("the linear api search query")
 }
 
 class GetIssueComments {
-  intent "get_issue_comments" @description("Get comments on an issue")
+  intent "get_issue_comments" @description("Get comments on an issue") // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   issue_id string
 }
 
 class ListUsers {
-  intent "list_users" @description("list users on a team, or all users if no team_id is provided")
+  intent "list_users" @description("list users on a team, or all users if no team_id is provided") // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string?
 }
 
 
 class ListLabels {
-  intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided")
+  intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided") // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string?
 }
 

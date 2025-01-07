@@ -4,7 +4,7 @@
   "description": "Linear Assistant TypeScript Implementation",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -22,6 +22,7 @@
     "js-yaml": "^4.1.0",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "yaml": "^2.7.0"
   },
