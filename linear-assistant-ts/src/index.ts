@@ -7,10 +7,6 @@ import * as yaml from 'js-yaml';
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY });
 
-async function getCurrentUser(): LinearFetch<User> {
-  return linearClient.viewer;
-}
-
 function stringifyToYaml(obj: any): string {
   // Custom replacer function to ignore functions
   const replacer = (key: string, value: any) => {
