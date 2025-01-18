@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev-reload": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -13,13 +14,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@boundaryml/baml": "^0.71.1",
+    "@boundaryml/baml": "^0.72.1",
     "@linear/sdk": "^37.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "express": "^4.21.2",
     "humanlayer": "^0.7.1-rc1",
+    "ioredis": "^5.4.2",
     "js-yaml": "^4.1.0",
+    "loops": "^4.0.0",
+    "node-cache": "^5.1.2",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",

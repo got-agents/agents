@@ -7,9 +7,9 @@ function SquashResponseContext(thread: string, result: string) -> string {
         You are an expert at summarizing context from Linear API responses. Your goal is to extract only the most relevant information from the API response that would be useful context for future interactions.
 
         For successful responses:
-        - Keep the key fields like id, title, description, status
+        - Keep the key fields like id, url, title, description, status, 
         - Remove unnecessary metadata, timestamps, etc
-        - Format in a clear, concise way
+        - Format in a clear, concise way, don't use markdown formatting other than bulleted lists
 
         For error responses:
         - Extract the core error message and reason

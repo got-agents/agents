@@ -12,7 +12,9 @@ class DoneForNow {
     message to send to the user about the work that was done. 
     TRY VERY HARD to include a link to the issue in linear if possible, but don't make one up.
 
-    Linear urls look like https://linear.app/humanlayer/issue/OPS-806/ben-swerdlow
+    If you don't have a link to the issue, you can use a search query to find it.
+
+    Linear urls look like https://linear.app/humanlayer/issue/ISSUE_ID/ISSUE_TITLE
   "#)
 }
 
@@ -41,24 +43,46 @@ class CreateIssueRequest {
   "#)
 }
 
+class UpdateIssue {
+  intent "update_issue"
+  issue_id string
+  update UpdateIssueRequest
+}
+
+class UpdateIssueRequest {
+  title string?
+  description string?
+  team_id string?
+  project_id string?
+  assignee_id string?
+  labels_ids string[]?
+  priority int? @description(#"
+        The priority of the issue. 
+        0 = No priority, 1 = Urgent, 2 = High, 3 = Normal, 4 = Low.
+  "#)
+  state_id string? @description("The ID of the workflow state to set")
+  due_date string? @description("ISO date string for when this issue is due")
+}
+
+
 
 
 //
 // Sync Steps - no interaction
 //
 class ListTeams {
-  intent "list_teams" // for the context compactor - helpful to know what the agent was looking for
+  intent "list_teams"  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation")
 }
 
 class ListProjects {
-  intent "list_projects" // for the context compactor - helpful to know what the agent was looking for
+  intent "list_projects"  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string? @description("list projects for a given team, or all projects if no team_id is provided")
 }
 
 class ListIssues {
-  intent "list_issues" @description("List issues from a given time range") // for the context compactor - helpful to know what the agent was looking for
+  intent "list_issues" @description("List issues from a given time range")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   filter IssueFilter?
   after string? @description("ISO date string")
@@ -85,26 +109,32 @@ class StringComparator {
 }
 
 class SearchIssues {
-  intent "search_issues" @description("Search issues by title, description, or assignee") // for the context compactor - helpful to know what the agent was looking for
+  intent "search_issues" @description("Search issues by title, description, or assignee")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   query string @description("the linear api search query")
 }
 
 class GetIssueComments {
-  intent "get_issue_comments" @description("Get comments on an issue") // for the context compactor - helpful to know what the agent was looking for
+  intent "get_issue_comments" @description("Get comments on an issue")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   issue_id string
 }
 
 class ListUsers {
-  intent "list_users" @description("list users on a team, or all users if no team_id is provided") // for the context compactor - helpful to know what the agent was looking for
+  intent "list_users" @description("list users on a team, or all users if no team_id is provided")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string?
 }
 
 
 class ListLabels {
-  intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided") // for the context compactor - helpful to know what the agent was looking for
+  intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided")  // for the context compactor - helpful to know what the agent was looking for
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
+  team_id string?
+}
+
+class ListWorkflowStates {
+  intent "list_workflow_states" @description("list workflow states on a team, or all workflow states if no team_id is provided")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string?
 }
@@ -157,8 +187,8 @@ class EmailPayload {
 // Events and Threads
 //
 class Event {
-  type "email_received" | "human_response" | "create_issue" | "issue_create_result" | "list_teams" | "list_teams_result" | "list_issues" | "list_issues_result" | "request_more_information" | "done_for_now" | "list_teams" | "list_teams_result" | "list_users" | "list_users_result" | "add_comment" | "add_comment_result" | "search_issues" | "search_issues_result" | "list_labels" | "list_labels_result" | "error" | "get_issue_comments" | "get_issue_comments_result" | "list_projects" | "list_projects_result"
-  data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | ListLabels | GetIssueComments | ListProjects | string
+  type "email_received" | "human_response" | "create_issue" | "issue_create_result" | "list_teams" | "list_teams_result" | "list_issues" | "list_issues_result" | "request_more_information" | "done_for_now" | "list_teams" | "list_teams_result" | "list_users" | "list_users_result" | "add_comment" | "add_comment_result" | "search_issues" | "search_issues_result" | "list_labels" | "list_labels_result" | "error" | "get_issue_comments" | "get_issue_comments_result" | "list_projects" | "list_projects_result" | "list_loops_mailing_lists" | "add_user_to_loops_mailing_list" | "list_loops_mailing_lists_result" | "add_user_to_loops_mailing_list_result" | "add_user_to_loops_mailing_list_result" | "update_issue" | "update_issue_result" | "list_workflow_states" | "list_workflow_states_result"
+  data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | ListLabels | GetIssueComments | ListProjects | ListLoopsMailingLists | AddUserToLoopsMailingList | UpdateIssue | ListWorkflowStates | string
 }
 
 
@@ -172,8 +202,9 @@ function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
-) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects {
+) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue {
     client Sonnet36
+
     prompt #"
         {{ _.role("system") }}
 
@@ -197,6 +228,7 @@ function DetermineNextStep(
 
         Linear is a project management tool that helps teams manage their work. 
         You are managing my linear board by creating issues, adding comments, and updating issues.
+
 
         I use several types of issues in the linear for different tasks:
 
@@ -236,6 +268,7 @@ test InitialEmail {
               <email_received>: 
                   {"from_address":"test@example.com","to_address":"support@company.com","subject":"New Ticket","body":"Can you make a new issue for Austin to restock the fridges with tasty beers?","message_id":"test123","previous_thread":[],"raw_email":"raw email content","is_test":null}
               </email_received>
+
               
           
     "#
