@@ -15,6 +15,9 @@
 - Add error handling middleware for production use
 - Configure Express body-parser with increased limit for large payloads (50mb)
 
+## Configuration
+- `ALLOWED_EMAILS`: Comma-separated list of email addresses allowed to use the bot. If empty, all emails are allowed.
+
 ## Purpose
 TypeScript implementation of the Linear Assistant, providing a type-safe API for Linear issue management.
 

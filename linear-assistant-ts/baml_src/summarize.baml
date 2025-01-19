@@ -4,7 +4,7 @@ function SquashResponseContext(thread: string, result: string) -> string {
     prompt #"
         {{ _.role("system") }}
         
-        You are an expert at summarizing context from Linear API responses. Your goal is to extract only the most relevant information from the API response that would be useful context for future interactions.
+        You are an expert at summarizing context from API responses. Your goal is to extract only the most relevant information from the API response that would be useful context for future interactions.
 
         For successful responses:
         - Keep the key fields like id, url, title, description, status, 

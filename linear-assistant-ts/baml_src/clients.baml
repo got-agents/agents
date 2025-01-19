@@ -1,5 +1,13 @@
 // Learn more about clients at https://docs.boundaryml.com/docs/snippets/clients/overview
 
+client<llm> O1 {
+  provider openai
+  options {
+    model "o1-preview"
+    api_key env.OPENAI_API_KEY
+  }
+}
+
 client<llm> CustomGPT4o {
   provider openai
   options {
@@ -53,11 +61,11 @@ client<llm> OpenaiFallback {
   }
 }
 
-client<llm> Sonnet36 {
+client<llm> O1FallbackSonnet36 {
   provider fallback
   options {
     // This will try the clients in order until one succeeds
-    strategy [CustomSonnet, CustomGPT4o]
+    strategy [O1, CustomSonnet]
   }
 }
 

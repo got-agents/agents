@@ -29,7 +29,14 @@ import * as yaml from 'js-yaml'
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = new LoopsClient(process.env.LOOPS_API_KEY!)
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379/1')
+const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
+const stateMode: string = process.env.STATE_MODE || 'remote'
+
+if (stateMode !== 'remote' && stateMode !== 'cache') {
+  throw new Error('STATE_MODE must be either "remote" or "cache"')
+}
+
+const STATE_MODE: 'remote' | 'cache' = stateMode as 'remote' | 'cache'
 
 redis.on('error', err => {
   console.error('Redis connection error:', err)
@@ -103,6 +110,8 @@ const lastEventToResultType: Record<string, Event['type']> = {
   list_projects: 'list_projects_result',
   add_user_to_loops_mailing_list: 'add_user_to_loops_mailing_list_result',
   list_loops_mailing_lists: 'list_loops_mailing_lists_result',
+  list_workflow_states: 'list_workflow_states_result',
+  update_issue: 'update_issue_result',
 }
 
 const appendResult = async (
@@ -113,7 +122,11 @@ const appendResult = async (
   const lastEvent: Event = thread.events.slice(-1)[0]
   const responseType: Event['type'] = lastEventToResultType[lastEvent.type]
   if (!responseType) {
-    throw new Error(`No response type found for ${lastEvent.type}`)
+    thread.events.push({
+      type: 'error',
+      data: `No response type found for ${lastEvent.type} - something is wrong with your internal programming, time to get help`,
+    })
+    return thread
   }
   try {
     let result
@@ -319,7 +332,19 @@ const _handleNextStep = async (
         type: 'list_labels',
         data: nextStep,
       })
-      thread = await appendResult(thread, () => linearClient.issueLabels(), 'labels')
+      const labelFilter = nextStep.label_name_contains
+        ? {
+            name: {
+              contains: nextStep.label_name_contains,
+            },
+          }
+        : undefined
+
+      thread = await appendResult(
+        thread,
+        () => linearClient.issueLabels({ filter: labelFilter }),
+        `labels::${nextStep.label_name_contains}`,
+      )
 
       return thread
     case 'get_issue_comments':
@@ -339,7 +364,7 @@ const _handleNextStep = async (
         type: 'list_workflow_states',
         data: nextStep,
       })
-      const filter = nextStep.team_id
+      let filter = nextStep.team_id
         ? {
             team: {
               id: {
@@ -502,12 +527,30 @@ const handleHumanResponse = async (
   throw new Error(`Could not determine human response type: ${JSON.stringify(humanResponse)}`)
 }
 
+const getAllowedEmails = (): Set<string> => {
+  const allowedEmails = process.env.ALLOWED_EMAILS || ''
+  return new Set(
+    allowedEmails
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean),
+  )
+}
+
 app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
   if (req.body.is_test || req.body.event.from_address === 'overworked-admin@coolcompany.com') {
     console.log('test email received, skipping')
     res.json({ status: 'ok', intent: 'test' })
     return
   }
+
+  const allowedEmails = getAllowedEmails()
+  if (allowedEmails.size > 0 && !allowedEmails.has(req.body.event.from_address)) {
+    console.log(`email from non-allowed sender ${req.body.event.from_address}, skipping`)
+    res.json({ status: 'ok', intent: 'unauthorized' })
+    return
+  }
+
   console.log(`new email received from ${req.body.event.from_address}`)
 
   // Return immediately
@@ -526,9 +569,9 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
       ],
     }
 
+    // prefill context always, don't waste tool call round trips
     try {
-      // prefill context always, don't waste tokens on this
-      const _fake_humanlayer = undefined as any // wont need this yet
+      const _fake_humanlayer = undefined as any // wont need this yet, these are all read-only
       console.log('prefilling projects')
       thread = (await _handleNextStep(thread, { intent: 'list_projects' }, _fake_humanlayer)) as Thread
       console.log('prefilling teams')
@@ -537,6 +580,12 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
       thread = (await _handleNextStep(thread, { intent: 'list_users' }, _fake_humanlayer)) as Thread
       console.log('prefilling labels')
       thread = (await _handleNextStep(thread, { intent: 'list_labels' }, _fake_humanlayer)) as Thread
+      console.log('prefilling workflow states')
+      thread = (await _handleNextStep(
+        thread,
+        { intent: 'list_workflow_states' },
+        _fake_humanlayer,
+      )) as Thread
       console.log('prefilling mailing lists')
       thread = (await _handleNextStep(
         thread,
