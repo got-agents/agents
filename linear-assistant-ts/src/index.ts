@@ -30,13 +30,12 @@ import * as yaml from 'js-yaml'
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = new LoopsClient(process.env.LOOPS_API_KEY!)
 const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
-const stateMode: string = process.env.STATE_MODE || 'remote'
-
-if (stateMode !== 'remote' && stateMode !== 'cache') {
-  throw new Error('STATE_MODE must be either "remote" or "cache"')
-}
-
-const STATE_MODE: 'remote' | 'cache' = stateMode as 'remote' | 'cache'
+const stateMode: 'remote' | 'cache' = !process.env.STATE_MODE
+  ? 'remote'
+  : process.env.STATE_MODE === 'remote'
+  ? 'remote'
+  : 'cache'
+console.log(`stateMode: ${stateMode}`)
 
 redis.on('error', err => {
   console.error('Redis connection error:', err)
@@ -45,8 +44,15 @@ redis.on('error', err => {
 redis.on('connect', () => {
   console.log('Connected to Redis')
 })
-const CACHE_TTL = 60 * 60 * 6 // 6 hours in seconds
+const CACHE_TTL = 60 * 60 * 120 // 120 hours in seconds
+const STATE_TTL = 60 * 60 * 24 // 24 hours in seconds
 const debug: boolean = !!process.env.DEBUG
+
+const cacheState = async (thread: Thread): Promise<string> => {
+  const stateId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+  await redis.setex(`state:${stateId}`, STATE_TTL, JSON.stringify(thread))
+  return stateId
+}
 
 function stringifyToYaml(obj: any): string {
   // Custom replacer function to ignore functions
@@ -203,10 +209,11 @@ const _handleNextStep = async (
         type: 'done_for_now',
         data: nextStep,
       })
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
         },
       })
       return false
@@ -215,10 +222,11 @@ const _handleNextStep = async (
         type: 'request_more_information',
         data: nextStep,
       })
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
         },
       })
       console.log(`thread sent to humanlayer`)
@@ -228,11 +236,12 @@ const _handleNextStep = async (
         type: 'create_issue',
         data: nextStep,
       })
+
       await hl.createFunctionCall({
         spec: {
           fn: 'create_issue',
           kwargs: nextStep.issue,
-          state: thread,
+          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
         },
       })
       console.log(`thread sent to humanlayer`)
@@ -250,7 +259,7 @@ const _handleNextStep = async (
             comment: nextStep.comment,
             view_issue_url: nextStep.view_issue_url,
           },
-          state: thread,
+          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
         },
       })
       return false
@@ -402,7 +411,11 @@ const _handleNextStep = async (
       thread = await appendResult(thread, () => loops.getMailingLists(), 'mailing_lists')
       return thread
     default:
-      throw new Error('Not implemented')
+      thread.events.push({
+        type: 'error',
+        data: `you called a tool that is not implemented: ${nextStep.intent}, something is wrong with your internal programming, time to get help`,
+      })
+      return thread
   }
 }
 
@@ -544,9 +557,18 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
     return
   }
 
+  // Check if email is in "Name <email>" format and extract just the email
+  let fromAddress = req.body.event.from_address
+  const emailMatch = fromAddress.match(/<(.+?)>/)
+  if (emailMatch) {
+    fromAddress = emailMatch[1]
+  }
+
   const allowedEmails = getAllowedEmails()
-  if (allowedEmails.size > 0 && !allowedEmails.has(req.body.event.from_address)) {
-    console.log(`email from non-allowed sender ${req.body.event.from_address}, skipping`)
+  if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
+    console.log(
+      `email from non-allowed sender ${req.body.event.from_address} (parsed as ${fromAddress}), skipping`,
+    )
     res.json({ status: 'ok', intent: 'unauthorized' })
     return
   }
@@ -602,14 +624,14 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
 })
 
 app.post('/webhook/human-response-on-existing-thread', (req: Request, res: Response) => {
-  const humanResponse = req.body
+  const humanResponse: FunctionCall | HumanContact = req.body.event
   if (debug) {
     console.log(`${JSON.stringify(humanResponse)}`)
   }
 
   if (!humanResponse.spec.state) {
     console.error('received human response without state')
-    res.status(500)
+    res.status(400)
     res.json({ status: 'error', error: 'state is required' })
     return
   }
@@ -620,7 +642,17 @@ app.post('/webhook/human-response-on-existing-thread', (req: Request, res: Respo
   // Process asynchronously
   Promise.resolve().then(async () => {
     try {
-      let thread: Thread = humanResponse.spec.state
+      let thread: Thread
+      if ('cachedStateId' in humanResponse.spec.state!) {
+        const cachedState = await redis.get(`state:${humanResponse.spec.state.id}`)
+        if (!cachedState) {
+          console.error(`State not found in cache for humanResponse ${JSON.stringify(humanResponse)}`)
+          return
+        }
+        thread = JSON.parse(cachedState)
+      } else {
+        thread = humanResponse.spec.state as Thread
+      }
       console.log(`human_response received: ${JSON.stringify(humanResponse)}`)
       await handleHumanResponse(thread, humanResponse)
     } catch (e) {
@@ -658,7 +690,16 @@ app.use((req: Request, res: Response) => {
   })
 })
 
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(process.env.HUMANLAYER_API_BASE)
+
+  console.log(`fetching project from ${process.env.HUMANLAYER_API_BASE}/project`)
+  const project = await fetch(`${process.env.HUMANLAYER_API_BASE}/project`, {
+    headers: {
+      Authorization: `Bearer ${process.env.HUMANLAYER_API_KEY}`,
+    },
+  })
+  console.log(await project.json())
+
   console.log(`Server running at http://localhost:${port}`)
 })

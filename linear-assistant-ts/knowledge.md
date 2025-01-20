@@ -17,6 +17,7 @@
 
 ## Configuration
 - `ALLOWED_EMAILS`: Comma-separated list of email addresses allowed to use the bot. If empty, all emails are allowed.
+- `STATE_MODE`: Either 'remote' or 'cache'. In cache mode, thread state is stored in Redis and only IDs are passed to webhooks.
 
 ## Purpose
 TypeScript implementation of the Linear Assistant, providing a type-safe API for Linear issue management.
