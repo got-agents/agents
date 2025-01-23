@@ -70,6 +70,14 @@ client<llm> O1FallbackSonnet36 {
 }
 
 // https://docs.boundaryml.com/docs/snippets/clients/retry
+client<llm> Sonnet36FallbackO1 {
+  provider fallback
+  options {
+    // This will try the clients in order until one succeeds
+    strategy [CustomSonnet, O1]
+  }
+}
+
 retry_policy Constant {
   max_retries 3
   // Strategy is optional
