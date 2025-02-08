@@ -29,7 +29,7 @@ class EmailPayload {
 // Events and Threads
 //
 class Event {
-  type "email_received" | "human_response" | "create_issue" | "issue_create_result" | "list_teams" | "list_teams_result" | "list_issues" | "list_issues_result" | "request_more_information" | "done_for_now" | "list_teams" | "list_teams_result" | "list_users" | "list_users_result" | "add_comment" | "add_comment_result" | "search_issues" | "search_issues_result" | "list_labels" | "list_labels_result" | "error" | "get_issue_comments" | "get_issue_comments_result" | "list_projects" | "list_projects_result" | "list_loops_mailing_lists" | "add_user_to_loops_mailing_list" | "list_loops_mailing_lists_result" | "add_user_to_loops_mailing_list_result" | "add_user_to_loops_mailing_list_result" | "update_issue" | "update_issue_result" | "list_workflow_states" | "list_workflow_states_result"
+  type string
   data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | ListLabels | GetIssueComments | ListProjects | ListLoopsMailingLists | AddUserToLoopsMailingList | UpdateIssue | ListWorkflowStates | string
 }
 
