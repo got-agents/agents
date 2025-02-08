@@ -28,6 +28,7 @@ import {
 } from './baml_client'
 
 import * as yaml from 'js-yaml'
+import { createHash } from 'crypto'
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = new LoopsClient(process.env.LOOPS_API_KEY!)
@@ -41,14 +42,7 @@ redis.on('connect', () => {
   console.log('Connected to Redis')
 })
 const CACHE_TTL = 60 * 60 * 120 // 120 hours in seconds
-const STATE_TTL = 60 * 60 * 24 // 24 hours in seconds
 const debug: boolean = !!process.env.DEBUG
-
-const cacheState = async (thread: Thread): Promise<string> => {
-  const stateId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
-  await redis.setex(`state:${stateId}`, STATE_TTL, JSON.stringify(thread))
-  return stateId
-}
 
 function stringifyToYaml(obj: any): string {
   // Custom replacer function to ignore functions
@@ -160,20 +154,25 @@ const appendResult = async (
     if (cacheKey) {
       const [cachedResult, cachedSquash] = await Promise.all([
         redis.get(cacheKey),
-        redis.get(`squash_${cacheKey}_${threadToPrompt(thread)}`),
+        redis.get(`squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`)
       ])
+
 
       if (cachedResult && cachedSquash) {
         cacheStats.hits++
         result = JSON.parse(cachedResult)
         squashedEvent = cachedSquash
+      } else if (cachedResult) {
+        cacheStats.hits++
+        result = JSON.parse(cachedResult)
+        squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
       } else {
         cacheStats.misses++
         result = await fn()
         squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
         await Promise.all([
           redis.setex(cacheKey, CACHE_TTL, JSON.stringify(result)),
-          redis.setex(`squash_${cacheKey}_${threadToPrompt(thread)}`, CACHE_TTL, squashedEvent),
+          redis.setex(`squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`, CACHE_TTL, squashedEvent),
         ])
       }
     } else {
