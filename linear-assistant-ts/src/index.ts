@@ -4,6 +4,7 @@ import { FunctionCall, HumanContact, humanlayer, HumanLayer } from 'humanlayer'
 import Redis from 'ioredis'
 import { LoopsClient } from 'loops'
 import { Webhook } from 'svix'
+import bodyParser from 'body-parser'
 import {
   AddComment,
   AddUserToLoopsMailingList,
@@ -70,8 +71,6 @@ function stringifyToYaml(obj: any): string {
 
 const app: Express = express()
 const port = process.env.PORT || 8000
-
-app.use(express.json({ limit: '50mb' }))
 
 // accumulators are one honking great idea
 const eventToPrompt = (event: Event) => {
@@ -584,31 +583,28 @@ const getTargetEmails = (): Set<string> => {
   )
 }
 
-
 // vendor these in, should be exported from humanlayer but they're not yet
 type EmailWebhookPayload = {
-  is_test: boolean;
-  event: EmailPayload;
-  type: 'agent_email.received';
-};
+  is_test: boolean
+  event: EmailPayload
+  type: 'agent_email.received'
+}
 
 type HumanContactWebhookPayload = {
-  is_test: boolean;
-  event: HumanContact;
-  type: 'human_contact.completed';
-};
+  is_test: boolean
+  event: HumanContact
+  type: 'human_contact.completed'
+}
 
 type FunctionCallWebhookPayload = {
-  is_test: boolean;
-  event: FunctionCall;
-  type: 'function_call.completed';
-};
+  is_test: boolean
+  event: FunctionCall
+  type: 'function_call.completed'
+}
 
-type WebhookPayload = EmailWebhookPayload | HumanContactWebhookPayload | FunctionCallWebhookPayload;
-
+type WebhookPayload = EmailWebhookPayload | HumanContactWebhookPayload | FunctionCallWebhookPayload
 
 const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response) => {
-
   if (payload.is_test || payload.event.from_address === 'overworked-admin@coolcompany.com') {
     console.log('test email received, skipping')
     res.json({ status: 'ok', intent: 'test' })
@@ -631,6 +627,8 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
 
   const allowedEmails = getAllowedEmails()
   const targetEmails = getTargetEmails()
+  console.log(`allowedEmails: ${Array.from(allowedEmails).join(',')}`)
+  console.log(`targetEmails: ${Array.from(targetEmails).join(',')}`)
 
   // Check if sender is allowed (if allowlist is configured)
   if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
@@ -698,7 +696,7 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
       console.error('Error processing new email thread:', e)
     }
   })
-})
+}
 
 // Add after other env var checks
 const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET
@@ -738,7 +736,7 @@ const webhookHandler = (req: Request, res: Response) => {
     return
   }
 
-  const payload = req.body as WebhookPayload
+  const payload = JSON.parse(req.body) as WebhookPayload
 
   switch (payload.type) {
     case 'agent_email.received':
@@ -750,9 +748,10 @@ const webhookHandler = (req: Request, res: Response) => {
   }
 }
 
-
-const callCompletedHandler = async (payload: HumanContactWebhookPayload | FunctionCallWebhookPayload, res: Response) => {
-
+const callCompletedHandler = async (
+  payload: HumanContactWebhookPayload | FunctionCallWebhookPayload,
+  res: Response,
+) => {
   const humanResponse: FunctionCall | HumanContact = payload.event
 
   if (debug) {
@@ -782,9 +781,13 @@ const callCompletedHandler = async (payload: HumanContactWebhookPayload | Functi
   })
 }
 
-app.post('/webhook/generic', webhookHandler)
-app.post('/webhook/new-email-thread', webhookHandler)
-app.post('/webhook/human-response-on-existing-thread', webhookHandler)
+app.post('/webhook/generic', bodyParser.raw({ type: 'application/json' }), webhookHandler)
+app.post('/webhook/new-email-thread', bodyParser.raw({ type: 'application/json' }), webhookHandler)
+app.post(
+  '/webhook/human-response-on-existing-thread',
+  bodyParser.raw({ type: 'application/json' }),
+  webhookHandler,
+)
 
 // Basic health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
