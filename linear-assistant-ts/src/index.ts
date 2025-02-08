@@ -3,6 +3,7 @@ import express, { Express, Request, Response } from 'express'
 import { FunctionCall, HumanContact, humanlayer, HumanLayer } from 'humanlayer'
 import Redis from 'ioredis'
 import { LoopsClient } from 'loops'
+import { Webhook } from 'svix'
 import {
   AddComment,
   AddUserToLoopsMailingList,
@@ -120,6 +121,32 @@ const lastEventToResultType: Record<string, Event['type']> = {
   update_issue: 'update_issue_result',
 }
 
+// Add after Redis initialization
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  getHitRate: () => {
+    const total = cacheStats.hits + cacheStats.misses
+    return total === 0 ? 0 : (cacheStats.hits / total) * 100
+  },
+  reset: () => {
+    cacheStats.hits = 0
+    cacheStats.misses = 0
+  },
+}
+
+// Log cache stats every minute
+setInterval(() => {
+  const hitRate = cacheStats.getHitRate()
+  console.log(
+    `Cache stats - Hits: ${cacheStats.hits}, Misses: ${cacheStats.misses}, Hit Rate: ${hitRate.toFixed(
+      2,
+    )}%`,
+  )
+  cacheStats.reset() // Reset counters after logging
+}, 60000) // 60000ms = 1 minute
+
+// Modify appendResult function to track cache stats
 const appendResult = async (
   thread: Thread,
   fn: () => Promise<any>,
@@ -144,9 +171,11 @@ const appendResult = async (
       ])
 
       if (cachedResult && cachedSquash) {
+        cacheStats.hits++
         result = JSON.parse(cachedResult)
         squashedEvent = cachedSquash
       } else {
+        cacheStats.misses++
         result = await fn()
         squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
         await Promise.all([
@@ -550,7 +579,21 @@ const getAllowedEmails = (): Set<string> => {
   )
 }
 
+const getTargetEmails = (): Set<string> => {
+  const targetEmails = process.env.TARGET_EMAILS || ''
+  return new Set(
+    targetEmails
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean),
+  )
+}
+
 app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
+  if (!verifyWebhook(req, res)) {
+    return
+  }
+
   if (req.body.is_test || req.body.event.from_address === 'overworked-admin@coolcompany.com') {
     console.log('test email received, skipping')
     res.json({ status: 'ok', intent: 'test' })
@@ -564,16 +607,35 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
     fromAddress = emailMatch[1]
   }
 
+  // Extract target email from to_address
+  let toAddress = req.body.event.to_address
+  const toEmailMatch = toAddress.match(/<(.+?)>/)
+  if (toEmailMatch) {
+    toAddress = toEmailMatch[1]
+  }
+
   const allowedEmails = getAllowedEmails()
+  const targetEmails = getTargetEmails()
+
+  // Check if sender is allowed (if allowlist is configured)
   if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
     console.log(
       `email from non-allowed sender ${req.body.event.from_address} (parsed as ${fromAddress}), skipping`,
     )
-    res.json({ status: 'ok', intent: 'unauthorized' })
+    res.json({ status: 'ok', intent: 'meh' })
     return
   }
 
-  console.log(`new email received from ${req.body.event.from_address}`)
+  // Check if target email is allowed (if target list is configured)
+  if (targetEmails.size > 0 && !targetEmails.has(toAddress)) {
+    console.log(
+      `email to non-target address ${req.body.event.to_address} (parsed as ${toAddress}), skipping`,
+    )
+    res.json({ status: 'ok', intent: 'meh' })
+    return
+  }
+
+  console.log(`new email received from ${req.body.event.from_address} to ${req.body.event.to_address}`)
 
   // Return immediately
   res.json({ status: 'ok' })
@@ -623,8 +685,40 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
   })
 })
 
+// Add after other env var checks
+const webhookSecret = process.env.SVIX_WEBHOOK_SECRET
+if (!webhookSecret) {
+  console.error('SVIX_WEBHOOK_SECRET environment variable is required')
+  process.exit(1)
+}
+
+const wh = new Webhook(webhookSecret)
+
+const verifyWebhook = (req: Request, res: Response): boolean => {
+  // Verify the webhook signature
+  try {
+    const payload = req.body
+    const headers = req.headers
+    wh.verify(payload, {
+      'svix-id': headers['svix-id'] as string,
+      'svix-timestamp': headers['svix-timestamp'] as string,
+      'svix-signature': headers['svix-signature'] as string,
+    })
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err)
+    res.status(400).json({ error: 'Invalid webhook signature' })
+    return false
+  }
+  return true
+}
+
 app.post('/webhook/human-response-on-existing-thread', (req: Request, res: Response) => {
+  if (!verifyWebhook(req, res)) {
+    return
+  }
+
   const humanResponse: FunctionCall | HumanContact = req.body.event
+
   if (debug) {
     console.log(`${JSON.stringify(humanResponse)}`)
   }
@@ -703,4 +797,11 @@ app.listen(port, async () => {
   console.log(await project.json())
 
   console.log(`Server running at http://localhost:${port}`)
+})
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Linear Assistant is running',
+  })
 })
