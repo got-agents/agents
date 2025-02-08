@@ -14,7 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@boundaryml/baml": "^0.72.1",
+    "@boundaryml/baml": "^0.75.0",
     "@linear/sdk": "^37.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
