@@ -1,0 +1,27 @@
+services:
+  test__linear-assistant:
+    stop_grace_period: "1s"
+    build:
+      context: ./linear-assistant-ts
+    env_file:
+      - .env
+    environment:
+      ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev"
+    volumes:
+      - ../../humanlayer/agents/linear-assistant-ts/src:/app/src
+      - ../../humanlayer/agents/linear-assistant-ts/package.json:/app/package.json
+      - ../../humanlayer/agents/linear-assistant-ts/package-lock.json:/app/package-lock.json
+      - ../../humanlayer/agents/linear-assistant-ts/tsconfig.json:/app/tsconfig.json
+    command:
+      - /bin/sh
+      - -c
+      - |
+        npm run dev-reload
+    ports:
+      - "8000:8000"
+  redis:
+    image: redis:6.2.6-alpine
+    ports:
+      - "6378:6379"
+    volumes:
+      - "./redis-data:/data"

@@ -45,7 +45,7 @@ function DetermineNextStep(
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
 ) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue {
-    client O1FallbackSonnet36
+    client Sonnet36FallbackO1
 
     prompt #"
         {{ _.role("system") }}
