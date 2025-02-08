@@ -1,0 +1,48 @@
+previews:
+  generation: disabled
+
+# List all services *except* PostgreSQL databases here
+services:
+  # A Redis instance
+  - type: redis
+    name: lightning
+    ipAllowList: # Required
+      - source: 0.0.0.0/0
+        description: everywhere
+    plan: free # Default: starter
+    maxmemoryPolicy: noeviction # Default: allkeys-lru
+
+  # A Node.js web service
+  # todo
+
+# Environment groups
+envVarGroups:
+  - name: agent-settings
+    envVars:
+      - key: LINEAR_API_KEY
+        value: ""
+        description: "Linear API key for accessing Linear's API"
+      - key: LOOPS_API_KEY
+        value: ""
+        description: "Loops API key for mailing list management"
+      - key: REDIS_CACHE_URL
+        value: "redis://lightning:6379/1"
+        description: "Redis connection URL for caching"
+      - key: STATE_MODE
+        value: "remote"
+        description: "State management mode (remote or cache)"
+      - key: DEBUG
+        value: "false"
+        description: "Enable debug logging"
+      - key: ALLOWED_SOURCE_EMAILS
+        value: ""
+        description: "Comma-separated list of allowed sender email addresses"
+      - key: ALLOWED_TARGET_EMAILS
+        value: ""
+        description: "Comma-separated list of allowed recipient email addresses"
+      - key: WEBHOOK_SIGNING_SECRET
+        value: ""
+        description: "Secret for verifying webhook signatures"
+      - key: HUMANLAYER_API_KEY
+        value: ""
+        description: "API key for HumanLayer service"

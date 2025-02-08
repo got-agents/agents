@@ -19,7 +19,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "express": "^4.21.2",
-    "humanlayer": "^0.7.1-rc1",
+    "humanlayer": "^0.7.4",
     "ioredis": "^5.4.2",
     "js-yaml": "^4.1.0",
     "loops": "^4.0.0",

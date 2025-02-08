@@ -31,12 +31,6 @@ import * as yaml from 'js-yaml'
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = new LoopsClient(process.env.LOOPS_API_KEY!)
 const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
-const stateMode: 'remote' | 'cache' = !process.env.STATE_MODE
-  ? 'remote'
-  : process.env.STATE_MODE === 'remote'
-  ? 'remote'
-  : 'cache'
-console.log(`stateMode: ${stateMode}`)
 
 redis.on('error', err => {
   console.error('Redis connection error:', err)
@@ -242,7 +236,7 @@ const _handleNextStep = async (
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
+          state: thread,
         },
       })
       return false
@@ -255,7 +249,7 @@ const _handleNextStep = async (
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
+          state: thread,
         },
       })
       console.log(`thread sent to humanlayer`)
@@ -270,7 +264,7 @@ const _handleNextStep = async (
         spec: {
           fn: 'create_issue',
           kwargs: nextStep.issue,
-          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
+          state: thread,
         },
       })
       console.log(`thread sent to humanlayer`)
@@ -288,7 +282,7 @@ const _handleNextStep = async (
             comment: nextStep.comment,
             view_issue_url: nextStep.view_issue_url,
           },
-          state: stateMode === 'remote' ? thread : { cachedStateId: await cacheState(thread) },
+          state: thread,
         },
       })
       return false
@@ -484,9 +478,10 @@ const handleNextStep = async (thread: Thread): Promise<void> => {
 
 const handleHumanResponse = async (
   thread: Thread,
-  humanResponse: FunctionCall | HumanContact,
+  payload: HumanContactWebhookPayload | FunctionCallWebhookPayload,
 ): Promise<void> => {
-  if ('msg' in humanResponse.spec) {
+  const humanResponse = payload.event
+  if (payload.type === 'human_contact.completed') {
     // its a human contact, append the human response to the thread
     const humanContact = humanResponse as HumanContact
     thread.events.push({
@@ -494,7 +489,7 @@ const handleHumanResponse = async (
       data: humanContact.status?.response!,
     })
     return await handleNextStep(thread)
-  } else if ('fn' in humanResponse.spec) {
+  } else if (payload.type === 'function_call.completed') {
     // its a function call
     const functionCall = humanResponse as FunctionCall
     // check if it was approved
@@ -570,7 +565,7 @@ const handleHumanResponse = async (
 }
 
 const getAllowedEmails = (): Set<string> => {
-  const allowedEmails = process.env.ALLOWED_EMAILS || ''
+  const allowedEmails = process.env.ALLOWED_SOURCE_EMAILS || ''
   return new Set(
     allowedEmails
       .split(',')
@@ -580,7 +575,7 @@ const getAllowedEmails = (): Set<string> => {
 }
 
 const getTargetEmails = (): Set<string> => {
-  const targetEmails = process.env.TARGET_EMAILS || ''
+  const targetEmails = process.env.ALLOWED_TARGET_EMAILS || ''
   return new Set(
     targetEmails
       .split(',')
@@ -589,26 +584,46 @@ const getTargetEmails = (): Set<string> => {
   )
 }
 
-app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
-  if (!verifyWebhook(req, res)) {
-    return
-  }
 
-  if (req.body.is_test || req.body.event.from_address === 'overworked-admin@coolcompany.com') {
+// vendor these in, should be exported from humanlayer but they're not yet
+type EmailWebhookPayload = {
+  is_test: boolean;
+  event: EmailPayload;
+  type: 'agent_email.received';
+};
+
+type HumanContactWebhookPayload = {
+  is_test: boolean;
+  event: HumanContact;
+  type: 'human_contact.completed';
+};
+
+type FunctionCallWebhookPayload = {
+  is_test: boolean;
+  event: FunctionCall;
+  type: 'function_call.completed';
+};
+
+type WebhookPayload = EmailWebhookPayload | HumanContactWebhookPayload | FunctionCallWebhookPayload;
+
+
+const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response) => {
+
+  if (payload.is_test || payload.event.from_address === 'overworked-admin@coolcompany.com') {
     console.log('test email received, skipping')
     res.json({ status: 'ok', intent: 'test' })
     return
   }
 
   // Check if email is in "Name <email>" format and extract just the email
-  let fromAddress = req.body.event.from_address
+  let fromAddress = payload.event.from_address
   const emailMatch = fromAddress.match(/<(.+?)>/)
   if (emailMatch) {
     fromAddress = emailMatch[1]
   }
 
   // Extract target email from to_address
-  let toAddress = req.body.event.to_address
+  let toAddress = payload.event.to_address
   const toEmailMatch = toAddress.match(/<(.+?)>/)
   if (toEmailMatch) {
     toAddress = toEmailMatch[1]
@@ -620,7 +635,7 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
   // Check if sender is allowed (if allowlist is configured)
   if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
     console.log(
-      `email from non-allowed sender ${req.body.event.from_address} (parsed as ${fromAddress}), skipping`,
+      `email from non-allowed sender ${payload.event.from_address} (parsed as ${fromAddress}), skipping`,
     )
     res.json({ status: 'ok', intent: 'meh' })
     return
@@ -629,20 +644,20 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
   // Check if target email is allowed (if target list is configured)
   if (targetEmails.size > 0 && !targetEmails.has(toAddress)) {
     console.log(
-      `email to non-target address ${req.body.event.to_address} (parsed as ${toAddress}), skipping`,
+      `email to non-target address ${payload.event.to_address} (parsed as ${toAddress}), skipping`,
     )
     res.json({ status: 'ok', intent: 'meh' })
     return
   }
 
-  console.log(`new email received from ${req.body.event.from_address} to ${req.body.event.to_address}`)
+  console.log(`new email received from ${payload.event.from_address} to ${payload.event.to_address}`)
 
   // Return immediately
   res.json({ status: 'ok' })
 
   // Process asynchronously
   Promise.resolve().then(async () => {
-    const body: EmailPayload = req.body.event
+    const body: EmailPayload = payload.event
     let thread: Thread = {
       initial_email: body,
       events: [
@@ -686,19 +701,25 @@ app.post('/webhook/new-email-thread', (req: Request, res: Response) => {
 })
 
 // Add after other env var checks
-const webhookSecret = process.env.SVIX_WEBHOOK_SECRET
+const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET
 if (!webhookSecret) {
-  console.error('SVIX_WEBHOOK_SECRET environment variable is required')
+  console.error('WEBHOOK_SIGNING_SECRET environment variable is required')
   process.exit(1)
 }
 
 const wh = new Webhook(webhookSecret)
 
 const verifyWebhook = (req: Request, res: Response): boolean => {
+  const payload = req.body
+  const headers = req.headers
   // Verify the webhook signature
   try {
-    const payload = req.body
-    const headers = req.headers
+    let msg
+    try {
+      msg = wh.verify(payload, headers as Record<string, string>)
+    } catch (err) {
+      res.status(400).json({})
+    }
     wh.verify(payload, {
       'svix-id': headers['svix-id'] as string,
       'svix-timestamp': headers['svix-timestamp'] as string,
@@ -712,12 +733,27 @@ const verifyWebhook = (req: Request, res: Response): boolean => {
   return true
 }
 
-app.post('/webhook/human-response-on-existing-thread', (req: Request, res: Response) => {
+const webhookHandler = (req: Request, res: Response) => {
   if (!verifyWebhook(req, res)) {
     return
   }
 
-  const humanResponse: FunctionCall | HumanContact = req.body.event
+  const payload = req.body as WebhookPayload
+
+  switch (payload.type) {
+    case 'agent_email.received':
+      return newEmailThreadHandler(payload, res)
+    case 'human_contact.completed':
+      return callCompletedHandler(payload, res)
+    case 'function_call.completed':
+      return callCompletedHandler(payload, res)
+  }
+}
+
+
+const callCompletedHandler = async (payload: HumanContactWebhookPayload | FunctionCallWebhookPayload, res: Response) => {
+
+  const humanResponse: FunctionCall | HumanContact = payload.event
 
   if (debug) {
     console.log(`${JSON.stringify(humanResponse)}`)
@@ -737,23 +773,18 @@ app.post('/webhook/human-response-on-existing-thread', (req: Request, res: Respo
   Promise.resolve().then(async () => {
     try {
       let thread: Thread
-      if ('cachedStateId' in humanResponse.spec.state!) {
-        const cachedState = await redis.get(`state:${humanResponse.spec.state.id}`)
-        if (!cachedState) {
-          console.error(`State not found in cache for humanResponse ${JSON.stringify(humanResponse)}`)
-          return
-        }
-        thread = JSON.parse(cachedState)
-      } else {
-        thread = humanResponse.spec.state as Thread
-      }
+      thread = humanResponse.spec.state as Thread
       console.log(`human_response received: ${JSON.stringify(humanResponse)}`)
-      await handleHumanResponse(thread, humanResponse)
+      await handleHumanResponse(thread, payload)
     } catch (e) {
       console.error('Error processing human response:', e)
     }
   })
-})
+}
+
+app.post('/webhook/generic', webhookHandler)
+app.post('/webhook/new-email-thread', webhookHandler)
+app.post('/webhook/human-response-on-existing-thread', webhookHandler)
 
 // Basic health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
