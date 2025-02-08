@@ -691,10 +691,11 @@ app.use((req: Request, res: Response) => {
 })
 
 app.listen(port, async () => {
-  console.log(process.env.HUMANLAYER_API_BASE)
+  const apiBase = process.env.HUMANLAYER_API_BASE || 'https://api.humanlayer.dev/humanlayer/v1'
+  console.log(`humanlayer api base: ${apiBase}`)
 
-  console.log(`fetching project from ${process.env.HUMANLAYER_API_BASE}/project`)
-  const project = await fetch(`${process.env.HUMANLAYER_API_BASE}/project`, {
+  console.log(`fetching project from ${apiBase}/project`)
+  const project = await fetch(`${apiBase}/project`, {
     headers: {
       Authorization: `Bearer ${process.env.HUMANLAYER_API_KEY}`,
     },
