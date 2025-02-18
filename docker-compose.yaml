@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev"
+      ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
     volumes:
       - ../../humanlayer/agents/linear-assistant-ts/src:/app/src
       - ../../humanlayer/agents/linear-assistant-ts/package.json:/app/package.json
