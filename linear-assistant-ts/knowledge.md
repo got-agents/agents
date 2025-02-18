@@ -15,6 +15,11 @@
 - Add error handling middleware for production use
 - Configure Express body-parser with increased limit for large payloads (50mb)
 
+## Label Handling
+- Use search_labels intent to find label IDs by name before creating/updating issues
+- Label IDs must be used for issue operations, not label names
+- Label searches are cached for 6 hours like other read operations
+
 ## Configuration
 - `ALLOWED_EMAILS`: Comma-separated list of email addresses allowed to use the bot. If empty, all emails are allowed.
 - `STATE_MODE`: Either 'remote' or 'cache'. In cache mode, thread state is stored in Redis and only IDs are passed to webhooks.

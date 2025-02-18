@@ -25,6 +25,7 @@ import {
   SearchIssues,
   Thread,
   UpdateIssue,
+  SearchLabels,
 } from './baml_client'
 
 import * as yaml from 'js-yaml'
@@ -106,6 +107,7 @@ const lastEventToResultType: Record<string, Event['type']> = {
   list_loops_mailing_lists: 'list_loops_mailing_lists_result',
   list_workflow_states: 'list_workflow_states_result',
   update_issue: 'update_issue_result',
+  search_labels: 'search_labels_result',
 }
 
 // Add after Redis initialization
@@ -154,9 +156,10 @@ const appendResult = async (
     if (cacheKey) {
       const [cachedResult, cachedSquash] = await Promise.all([
         redis.get(cacheKey),
-        redis.get(`squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`)
+        redis.get(
+          `squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`,
+        ),
       ])
-
 
       if (cachedResult && cachedSquash) {
         cacheStats.hits++
@@ -172,7 +175,11 @@ const appendResult = async (
         squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
         await Promise.all([
           redis.setex(cacheKey, CACHE_TTL, JSON.stringify(result)),
-          redis.setex(`squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`, CACHE_TTL, squashedEvent),
+          redis.setex(
+            `squash_${cacheKey}_${createHash('sha256').update(threadToPrompt(thread)).digest('hex')}`,
+            CACHE_TTL,
+            squashedEvent,
+          ),
         ])
       }
     } else {
@@ -221,7 +228,8 @@ const _handleNextStep = async (
     | AddUserToLoopsMailingList
     | ListLoopsMailingLists
     | ListWorkflowStates
-    | UpdateIssue,
+    | UpdateIssue
+    | SearchLabels,
   hl: HumanLayer,
 ): Promise<Thread | false> => {
   switch (nextStep.intent) {
@@ -430,6 +438,24 @@ const _handleNextStep = async (
         data: nextStep,
       })
       thread = await appendResult(thread, () => loops.getMailingLists(), 'mailing_lists')
+      return thread
+    case 'search_labels':
+      thread.events.push({
+        type: 'search_labels',
+        data: nextStep,
+      })
+      thread = await appendResult(
+        thread,
+        () =>
+          linearClient.issueLabels({
+            filter: {
+              name: {
+                contains: nextStep.name_contains,
+              },
+            },
+          }),
+        `search_labels::${nextStep.name_contains}`,
+      )
       return thread
     default:
       thread.events.push({
@@ -682,12 +708,14 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
         { intent: 'list_workflow_states' },
         _fake_humanlayer,
       )) as Thread
-      console.log('prefilling mailing lists')
-      thread = (await _handleNextStep(
-        thread,
-        { intent: 'list_loops_mailing_lists' },
-        _fake_humanlayer,
-      )) as Thread
+      if (process.env.LOOPS_API_KEY) {
+        console.log('prefilling mailing lists')
+        thread = (await _handleNextStep(
+          thread,
+          { intent: 'list_loops_mailing_lists' },
+          _fake_humanlayer,
+        )) as Thread
+      }
 
       // now pass it to the llm
       await handleNextStep(thread)

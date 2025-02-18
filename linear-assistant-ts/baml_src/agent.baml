@@ -1,4 +1,3 @@
-
 class HumanResponse {
   event_type "human_response"
   message string
@@ -30,7 +29,7 @@ class EmailPayload {
 //
 class Event {
   type string
-  data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | ListLabels | GetIssueComments | ListProjects | ListLoopsMailingLists | AddUserToLoopsMailingList | UpdateIssue | ListWorkflowStates | string
+  data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | UpdateIssue | ListWorkflowStates | string
 }
 
 
@@ -44,8 +43,8 @@ function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
-) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue {
-    client Sonnet36FallbackO1
+) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue | SearchLabels {
+    client CustomGPT4o
 
     prompt #"
         {{ _.role("system") }}

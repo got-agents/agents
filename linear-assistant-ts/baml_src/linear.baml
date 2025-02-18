@@ -70,9 +70,6 @@ class UpdateIssueRequest {
   due_date string? @description("ISO date string for when this issue is due")
 }
 
-
-
-
 //
 // Sync Steps - no interaction
 //
@@ -132,7 +129,6 @@ class ListUsers {
   team_id string?
 }
 
-
 class ListLabels {
   intent "list_labels" @description("list labels on a team, or all labels if no team_id is provided")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
@@ -144,6 +140,12 @@ class ListWorkflowStates {
   intent "list_workflow_states" @description("list workflow states on a team, or all workflow states if no team_id is provided")  // for the context compactor - helpful to know what the agent was looking for
   query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
   team_id string?
+}
+
+class SearchLabels {
+  intent "search_labels"
+  query_intent string? @description("what is your goal or desired outcome with this operation? What are you looking for?")
+  name_contains string @description("search for labels whose name contains this string")
 }
 
 //
