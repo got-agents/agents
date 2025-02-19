@@ -14,7 +14,7 @@ class DoneForNow {
 
     If you don't have a link to the issue, you can use a search query to find it.
 
-    Linear urls look like https://linear.app/humanlayer/issue/ISSUE_ID/ISSUE_TITLE
+    Linear URLs look like https://linear.app/humanlayer/issue/ISSUE_ID/ISSUE_TITLE
   "#)
 }
 

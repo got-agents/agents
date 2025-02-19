@@ -528,14 +528,19 @@ const handleHumanResponse = async (
       return await handleNextStep(thread)
     } else if (functionCall.spec.fn === 'create_issue') {
       // create_issue approved, create it and tell the llm what happened
-      thread = await appendResult(thread, () =>
-        linearClient.createIssue({
+      thread = await appendResult(thread, async () => {
+        // Don't be deceived, this single line is actually two calls to the Linear API.
+        // One to create an issue and one to populate the issue contents.
+        const { issue } = await linearClient.createIssue({
           title: functionCall.spec.kwargs.title,
           description: functionCall.spec.kwargs.description,
           teamId: functionCall.spec.kwargs.team_id,
           assigneeId: functionCall.spec.kwargs.assignee_id,
-        }),
-      )
+        });
+
+        return issue;
+      })
+
       return await handleNextStep(thread)
     } else if (functionCall.spec.fn === 'add_comment') {
       // add_comment approved, create it and tell the llm what happened
@@ -694,28 +699,37 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
     // prefill context always, don't waste tool call round trips
     try {
       const _fake_humanlayer = undefined as any // wont need this yet, these are all read-only
-      console.log('prefilling projects')
-      thread = (await _handleNextStep(thread, { intent: 'list_projects' }, _fake_humanlayer)) as Thread
-      console.log('prefilling teams')
-      thread = (await _handleNextStep(thread, { intent: 'list_teams' }, _fake_humanlayer)) as Thread
-      console.log('prefilling users')
-      thread = (await _handleNextStep(thread, { intent: 'list_users' }, _fake_humanlayer)) as Thread
-      console.log('prefilling labels')
-      thread = (await _handleNextStep(thread, { intent: 'list_labels' }, _fake_humanlayer)) as Thread
-      console.log('prefilling workflow states')
-      thread = (await _handleNextStep(
-        thread,
-        { intent: 'list_workflow_states' },
-        _fake_humanlayer,
-      )) as Thread
+      
+      // Create array of prefill operations with proper types
+      const prefillOps: (ListProjects | ListTeams | ListUsers | ListLabels | ListWorkflowStates | ListLoopsMailingLists)[] = [
+        { intent: 'list_projects' } as ListProjects,
+        { intent: 'list_teams' } as ListTeams,
+        { intent: 'list_users' } as ListUsers,
+        { intent: 'list_labels' } as ListLabels,
+        { intent: 'list_workflow_states' } as ListWorkflowStates,
+      ];
+
       if (process.env.LOOPS_API_KEY) {
-        console.log('prefilling mailing lists')
-        thread = (await _handleNextStep(
-          thread,
-          { intent: 'list_loops_mailing_lists' },
-          _fake_humanlayer,
-        )) as Thread
+        prefillOps.push({ intent: 'list_loops_mailing_lists' } as ListLoopsMailingLists);
       }
+
+      // Run all prefill operations in parallel
+      const results = await Promise.all(
+        prefillOps.map(op => {
+          console.log(`Prefilling context for ${op.intent}`);
+          return _handleNextStep(thread, op, _fake_humanlayer);
+        })
+      );
+
+      // Merge all events from parallel operations into thread
+      results.forEach(result => {
+        if (result) {
+          const resultThread = result as Thread;
+          // Only copy the last two events from each result (the request and response)
+          const lastTwoEvents = resultThread.events.slice(-2);
+          thread.events.push(...lastTwoEvents);
+        }
+      });
 
       // now pass it to the llm
       await handleNextStep(thread)
