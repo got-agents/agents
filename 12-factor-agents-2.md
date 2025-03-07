@@ -2,21 +2,14 @@
 
 ## The Journey to 12-Factor Agents
 
-In late 2022, the release of ChatGPT sparked widespread interest in autonomous AI systems. Engineering teams across the industry began experimenting with frameworks like LangChain, AutoGPT, and BabyAGI to build agents that could reason, plan, and act with minimal human supervision.
+We've been hacking on agents for a while.
 
 These early experiments revealed significant challenges when deploying agent systems to production:
 
 1. **Reliability issues**: Agents would get stuck in loops, hallucinate capabilities, or fail to make progress
 2. **Debugging difficulties**: Tracing through chains of thought to find errors was nearly impossible
-3. **Context management problems**: As conversations grew, agents would lose track of context or exceed token limits
-4. **Framework limitations**: Existing frameworks abstracted away too much, making customization difficult
-
-These early experiments revealed significant challenges when deploying agent systems to production:
-
-1. **Reliability issues**: Agents would get stuck in loops, hallucinate capabilities, or fail to make progress
-2. **Debugging difficulties**: Tracing through chains of thought to find errors was nearly impossible
-3. **Context management problems**: As conversations grew, agents would lose track of context or exceed token limits
-4. **Framework limitations**: Existing frameworks abstracted away too much, making customization difficult
+3. **Context management problems**: As conversations grew, agents would lose track of context and spin out into error loops, trying the same broken approach over and over again
+4. **Framework limitations**: Existing frameworks struggled to find the right balance between productivity and flexibility. They either abstracted away too much into black boxes that were hard to customize, or became so flexible they offered little value over building from scratch. We found ourselves digging through layers of abstractions and prompt templates just to make minor improvements.
 
 After testing multiple frameworks and encountering similar limitations with each, we recognized the need for a different approach. Instead of adapting frameworks to our requirements, we decided to build from first principles, focusing on:
 
