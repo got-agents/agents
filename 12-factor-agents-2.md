@@ -1,8 +1,40 @@
 # Agents the Hard Way: 12-Factor Agents
 
-In the rapidly evolving landscape of AI agents, we've been building production-grade systems that tackle real business problems. Through this journey, we've developed an architecture pattern we call "12-Factor Agents" – inspired by Heroku's [12-Factor App methodology](https://12factor.net/), but tailored specifically for LLM-powered agents.
+## The Journey to 12-Factor Agents
 
-This approach isn't about using the latest AutoGPT framework or agent orchestration platform. It's about building agents from first principles, with complete control over every aspect of their operation. We call it "agents the hard way" because it requires more upfront engineering effort, but the payoff is worth it: robust, maintainable, and truly effective agents.
+In late 2022, the release of ChatGPT sparked widespread interest in autonomous AI systems. Engineering teams across the industry began experimenting with frameworks like LangChain, AutoGPT, and BabyAGI to build agents that could reason, plan, and act with minimal human supervision.
+
+These early experiments revealed significant challenges when deploying agent systems to production:
+
+1. **Reliability issues**: Agents would get stuck in loops, hallucinate capabilities, or fail to make progress
+2. **Debugging difficulties**: Tracing through chains of thought to find errors was nearly impossible
+3. **Context management problems**: As conversations grew, agents would lose track of context or exceed token limits
+4. **Framework limitations**: Existing frameworks abstracted away too much, making customization difficult
+
+These early experiments revealed significant challenges when deploying agent systems to production:
+
+1. **Reliability issues**: Agents would get stuck in loops, hallucinate capabilities, or fail to make progress
+2. **Debugging difficulties**: Tracing through chains of thought to find errors was nearly impossible
+3. **Context management problems**: As conversations grew, agents would lose track of context or exceed token limits
+4. **Framework limitations**: Existing frameworks abstracted away too much, making customization difficult
+
+After testing multiple frameworks and encountering similar limitations with each, we recognized the need for a different approach. Instead of adapting frameworks to our requirements, we decided to build from first principles, focusing on:
+
+- Clear separation between reasoning and action
+- Maintainable code with familiar patterns
+- Robust error handling
+- Effective human oversight
+
+This led to a simpler architecture: using LLMs to convert natural language to structured tool calls, then handling those tool calls with traditional programming patterns. Our first production system built on these principles was the Linear Assistant - an agent that helps teams manage their project workflows in Linear through email interactions. It was deliberately focused on a narrow domain, but within that domain, it was remarkably effective. What made this approach different was its simplicity. Instead of trying to be everything to everyone, it did one thing well. And instead of relying on complex frameworks, it used patterns familiar to any software developer.
+
+We stripped everything back to basics. We defined clear interfaces between components. We separated reasoning from action. We built testable, maintainable systems that happened to use LLMs, rather than LLM systems that happened to be software.
+
+Our first production system built on these principles was the Linear Assistant - an agent that helps teams manage their project workflows in Linear through email interactions. It was deliberately focused on a narrow domain, but within that domain, it was remarkably effective. What made this approach different was its simplicity. Instead of trying to be everything to everyone, it did one thing well. And instead of relying on complex frameworks, it used patterns familiar to any software developer.
+
+As we built more agents using this approach, we began to see common patterns emerge. These patterns weren't specific to any particular domain or use case - they were fundamental principles for building robust agent systems. We codified these principles as the "12-Factor Agents" methodology, inspired by Heroku's influential 12-Factor App framework for building cloud-native applications.
+
+- Breaking out of chat interfaces to build [outer loop agents](https://theouterloop.substack.com/p/openais-realtime-api-is-a-step-towards)
+We codified these principles as the "12-Factor Agents" methodology, inspired by Heroku's influential 12-Factor App framework. Just as the original 12-Factor App methodology helped developers navigate the transition to cloud computing, we hope our 12-Factor Agents methodology will help teams build robust, maintainable AI agents that deliver real value in production environments.
 
 ## How We Got Here
 
@@ -10,14 +42,15 @@ Our journey to this approach wasn't straightforward. When we first started build
 
 Our first attempts were built on top of LangChain, using its agent frameworks to create systems that could reason about tasks and execute them. While these worked well for demos and simple use cases, we quickly hit limitations when trying to deploy them in production:
 
-1. **Reliability issues**: The agents would sometimes get stuck in loops, hallucinate capabilities, or simply fail to make progress.
-2. **Debugging nightmares**: When things went wrong, it was nearly impossible to understand why or how to fix it.
-3. **Context window bloat**: As conversations grew longer, the agents would lose track of earlier context or exceed token limits.
-4. **Lack of control**: The frameworks made too many decisions for us, leaving us unable to customize critical behaviors.
+1. **Reliability issues**: The agents would sometimes get stuck in loops, hallucinate capabilities, or simply fail to make progress. One agent confidently told a customer we offered a product that didn't exist, then proceeded to make up pricing details!
+2. **Debugging nightmares**: When things went wrong, it was nearly impossible to understand why or how to fix it. Tracing through 50KB of nested JSON chains felt like archaeological work, not software engineering.
+3. **Context window bloat**: As conversations grew longer, the agents would lose track of earlier context, spiraling into error loops trying the same thing over and over again. We watched in horror as one agent tried the same API call with the same parameters five times in a row, each time getting the same error.
+4. **Lack of control**: The frameworks made too many decisions for us, leaving us unable to customize critical behaviors. We spent more time fighting the framework than building features.
+
 
 Next, we tried other frameworks - each promising to solve the problems of the last. We experimented with CrewAI for multi-agent collaboration, AutoGen for more structured agent interactions, and even built our own mini-frameworks on top of these tools. While each framework had its strengths, they all shared a common weakness: they abstracted away too much of the underlying mechanics, making it difficult to build truly robust systems.
 
-The breaking point came when we tried to implement a seemingly simple feature: having an agent remember the context of a conversation across multiple sessions. What should have been straightforward turned into a complex integration challenge that required hacking around the framework's assumptions.
+The breaking point came when we tried to implement a seemingly simple feature: having an agent remember the context of a conversation across multiple sessions. What should have been straightforward turned into a complex integration challenge that required hacking around the framework's assumptions. After three days of fighting with serialization issues and context management, we realized we were solving the wrong problem.
 
 In late 2023, we decided to take a step back and reconsider our approach. Instead of starting with a framework and trying to bend it to our needs, what if we started with first principles and built exactly what we needed? We began by defining the core capabilities we wanted in our agents:
 - Reliable execution of tasks
@@ -42,6 +75,7 @@ The Linear Assistant demonstrates all 12 factors in action:
 - It handles errors gracefully and adapts its approach
 - It knows when to ask humans for clarification or approval
 - It can be triggered from various channels (primarily email)
+
 
 With this example in mind, let's dive into the 12 factors that define our methodology.
 
@@ -71,7 +105,7 @@ switch (nextStep.intent) {
 }
 ```
 
-This pattern creates a clean interface between the LLM's reasoning and your application logic.
+This pattern creates a clean interface between the LLM's reasoning and your application logic. It makes your code more maintainable, easier to test, and simpler to extend with new capabilities. When the LLM's output is structured, you can validate it before execution, preventing many common failure modes.
 
 ## 2. Small, Focused Agents
 
@@ -88,6 +122,8 @@ Rather than building monolithic agents that try to do everything, build small, f
 The key insight here is about LLM limitations: the bigger and more complex a task is, the more steps it will take, which means a longer context window. As context grows, LLMs are more likely to get lost or lose focus! By keeping agents focused on specific domains, we keep context windows manageable and LLM performance high.
 
 Our Linear Assistant handles email-based issue management in Linear. It doesn't try to also manage GitHub issues, calendar scheduling, or data analysis. This focus allows it to excel at its specific task.
+
+We learned this lesson the hard way when we initially tried to build a "super agent" that could handle multiple tools and workflows. The agent would frequently confuse which API to use for which task and lose track of multi-step processes. By splitting this into focused agents with clear responsibilities, reliability improved dramatically.
 
 ## 3. Compact Errors into Context Window
 
@@ -118,7 +154,7 @@ try {
 }
 ```
 
-This allows your agent to learn from mistakes and adapt its approach in real-time, just like a human would.
+This allows your agent to learn from mistakes and adapt its approach in real-time, just like a human would. In practice, this approach has been transformative. When our Linear Assistant encounters an error like "Invalid team ID format," it doesn't just fail – it recognizes the error, lists available teams, and tries again with the correct ID. Users often don't even realize an error occurred because the agent recovered so seamlessly.
 
 ## 4. Use Tools for Human Interaction
 
@@ -150,6 +186,8 @@ class DoneForNow {
 ```
 
 This approach gives the LLM specific options for how and when to contact humans, with clear structures for what information to include, rather than generic "text OR json" outputs that are common in chat interfaces.
+
+By treating human interaction as a first-class concept in your agent architecture, you make it easier to build systems that know when to operate autonomously and when to involve humans. This creates a more natural collaboration between humans and AI, where each contributes their strengths.
 
 ## 5. Tools Are Just Structured Output
 
@@ -186,7 +224,7 @@ The pattern is simple:
 3. Deterministic code executes the appropriate action (like calling an external API)
 4. Results are captured and fed back into the context
 
-This creates a clean separation between the LLM's decision-making and your application's actions.
+This creates a clean separation between the LLM's decision-making and your application's actions. The LLM decides what to do, but your code controls how it's done. This separation makes your system more reliable and easier to debug when things go wrong.
 
 ## 6. Own Your Prompts
 
@@ -263,7 +301,7 @@ test TeamIDErrorAsksForMoreInput {
 }
 ```
 
-This allows you to verify that your agent behaves as expected in specific scenarios.
+This allows you to verify that your agent behaves as expected in specific scenarios. By writing tests for your prompts, you can catch regressions before they affect users and systematically improve your agent's behavior over time.
 
 ## 7. Own How You Build Context
 
@@ -725,4 +763,6 @@ The 12-Factor Agent methodology creates a clear separation of concerns:
 
 This separation allows each part of the system to do what it does best, creating agents that are truly useful rather than merely impressive demos.
 
-As we continue to evolve this architecture, we're finding that these principles scale well across different domains and use cases. Whether you're building customer service agents, internal tools, or complex workflow automation, the 12-Factor approach provides a solid foundation.
+As we look to the future, we see these principles becoming even more important. As LLM capabilities continue to advance, the bottleneck in agent development will shift from "can the model understand this task?" to "can we build reliable systems around these models?" The teams that master these engineering challenges will be the ones that successfully deploy AI agents that create lasting business value.
+
+Whether you're building customer service agents, internal tools, or complex workflow automation, the 12-Factor approach provides a solid foundation that will scale with both your ambitions and the rapidly evolving capabilities of foundation models.
