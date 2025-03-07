@@ -12,8 +12,24 @@ services:
     plan: free # Default: starter
     maxmemoryPolicy: noeviction # Default: allkeys-lru
 
-  # A Node.js web service
-  # todo
+  # Linear Assistant
+  - type: web
+    name: linear-assistant
+    env: node
+    buildCommand: cd linear-assistant-ts && npm install && npm run build
+    startCommand: cd linear-assistant-ts && npm start
+    envVars:
+      - fromGroup: agent-settings
+
+  # DeployBot
+  - type: web
+    name: deploybot
+    env: node
+    buildCommand: cd deploybot-ts && npm install && npm run build
+    startCommand: cd deploybot-ts && npm start
+    envVars:
+      - fromGroup: deploybot-settings
+    port: 8001
 
 # Environment groups
 envVarGroups:
@@ -46,3 +62,36 @@ envVarGroups:
       - key: HUMANLAYER_API_KEY
         value: ""
         description: "API key for HumanLayer service"
+
+  - name: deploybot-settings
+    envVars:
+      - key: GITHUB_TOKEN
+        value: ""
+        description: "GitHub API token for accessing GitHub's API"
+      - key: GITHUB_OWNER
+        value: ""
+        description: "GitHub repository owner"
+      - key: GITHUB_REPO
+        value: ""
+        description: "GitHub repository name"
+      - key: VERCEL_TOKEN
+        value: ""
+        description: "Vercel API token for accessing Vercel's API"
+      - key: VERCEL_PROJECT_ID
+        value: ""
+        description: "Vercel project ID"
+      - key: VERCEL_TEAM_ID
+        value: ""
+        description: "Vercel team ID (optional)"
+      - key: WEBHOOK_SIGNING_SECRET
+        value: ""
+        description: "Secret for verifying webhook signatures"
+      - key: HUMANLAYER_API_KEY
+        value: ""
+        description: "API key for HumanLayer service"
+      - key: REDIS_CACHE_URL
+        value: "redis://lightning:6379/1"
+        description: "Redis connection URL for caching"
+      - key: DEFAULT_SLACK_CHANNEL
+        value: ""
+        description: "Default Slack channel ID for notifications"

@@ -1,0 +1,38 @@
+{
+  "name": "linear-assistant-ts",
+  "version": "1.0.0",
+  "description": "Linear Assistant TypeScript Implementation",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "dev-reload": "nodemon --exec tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@boundaryml/baml": "^0.75.0",
+    "@linear/sdk": "^37.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "body-parser": "^1.20.3",
+    "express": "^4.21.2",
+    "humanlayer": "^0.7.4",
+    "ioredis": "^5.4.2",
+    "js-yaml": "^4.1.0",
+    "loops": "^4.0.0",
+    "node-cache": "^5.1.2",
+    "nodemon": "^3.1.9",
+    "svix": "^1.45.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9"
+  }
+}
