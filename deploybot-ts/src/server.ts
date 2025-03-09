@@ -3,11 +3,10 @@ import express, { Express, Request, Response } from 'express'
 import bodyParser from 'body-parser'
 import {
   b,
-  EmailPayload,
-  Thread,
 } from './baml_client'
 import { HumanContact, FunctionCall } from 'humanlayer'
-import { V1Beta2SlackEventReceived, V1Beta1AgentEmailReceived, V1Beta1HumanContactCompleted, V1Beta1FunctionCallCompleted } from './vendored'
+import { EmailPayload, V1Beta2SlackEventReceived, V1Beta1AgentEmailReceived, V1Beta1HumanContactCompleted, V1Beta1FunctionCallCompleted } from './vendored'
+import { Thread } from './agent'
 import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
 
@@ -211,40 +210,6 @@ const newEmailThreadHandler = async (payload: V1Beta1AgentEmailReceived, res: Re
 
     // prefill context always, don't waste tool call round trips
     try {
-      const _fake_humanlayer = undefined as any // wont need this yet, these are all read-only
-      
-      // Create array of prefill operations with proper types
-      const prefillOps: (ListProjects | ListTeams | ListUsers | ListLabels | ListWorkflowStates | ListLoopsMailingLists)[] = [
-        { intent: 'list_projects' } as ListProjects,
-        { intent: 'list_teams' } as ListTeams,
-        { intent: 'list_users' } as ListUsers,
-        { intent: 'list_labels' } as ListLabels,
-        { intent: 'list_workflow_states' } as ListWorkflowStates,
-      ];
-
-      if (process.env.LOOPS_API_KEY) {
-        prefillOps.push({ intent: 'list_loops_mailing_lists' } as ListLoopsMailingLists);
-      }
-
-      // Run all prefill operations in parallel
-      const results = await Promise.all(
-        prefillOps.map(op => {
-          console.log(`Prefilling context for ${op.intent}`);
-          return _handleNextStep(thread, op, _fake_humanlayer);
-        })
-      );
-
-      // Merge all events from parallel operations into thread
-      results.forEach(result => {
-        if (result) {
-          const resultThread = result as Thread;
-          // Only copy the last two events from each result (the request and response)
-          const lastTwoEvents = resultThread.events.slice(-2);
-          thread.events.push(...lastTwoEvents);
-        }
-      });
-
-      // now pass it to the llm
       await handleNextStep(thread)
     } catch (e) {
       console.error('Error processing new email thread:', e)

@@ -3,23 +3,34 @@ import {
   b,
   ClarificationRequest,
   DoneForNow,
-  EmailPayload,
-  Event,
-  Thread,
   IntentListGitCommits,
   IntentListGitTags,
   IntentPushGitTag,
   IntentListVercelDeployments,
   IntentPromoteVercelDeployment,
-  RunCustomJavascriptCode,
-  ListEnvironmentVariablesAvailableToCode,
-  AskLuneCodingQuesiton,
 } from './baml_client'
 
 import * as yaml from 'js-yaml'
-import { V1Beta1FunctionCallCompleted } from './vendored'
-import { V1Beta1HumanContactCompleted } from './vendored'
-import { askLuneCodingQuestion } from './tools/lune'
+import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
+import { listVercelDeployments } from './tools/vercel'
+
+
+// Events and Threads
+export interface Event {
+  type: string;
+  data: EmailPayload | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string;
+}
+
+export interface Thread {
+  initial_email?: EmailPayload;
+  initial_slack_message?: SlackThread;
+  events: Event[];
+}
+
+export interface HumanResponse {
+  event_type: "human_response"
+  message: string
+}
 
 export function stringifyToYaml(obj: any): string {
   // Custom replacer function to ignore functions
@@ -178,40 +189,28 @@ const _handleNextStep = async (
       })
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
-        return 'listing deployments is not supported yet'
+        try {
+          const deployments = await listVercelDeployments();
+          return {
+            deployments,
+            message: `Found ${deployments.length} recent deployments.`
+          };
+        } catch (error: any) {
+          console.error('Error listing deployments:', error);
+          return `Error fetching Vercel deployments: ${error}`;
+        }
       })
     case 'promote_vercel_deployment':
       return await appendResult(thread, async () => {
         return 'promoting deployments is not supported yet'
       })
-  //   case 'run_custom_javascript_code':
-  //     return await appendResult(thread, async () => {
-  //       console.log(`(not) running custom javascript code: ${nextStep.code}`)
-  //       return 'running custom javascript is not supported yet'
-  //     })
-  //   case 'list_environment_variables_available_to_code':
-  //     return await appendResult(thread, async () => {
-  //       return [
-  //         'GITHUB_TOKEN',
-  //         'GITHUB_OWNER',
-  //         'GITHUB_REPO',
-  //         'VERCEL_BEARER_TOKEN',
-  //         'VERCEL_APP_NAME',
-  //         'VERCEL_PROJECT_ID',
-
-  //       ]
-  //     })
-  //   case 'ask_lune_coding_question':
-  //     return await appendResult(thread, async () => {
-  //       return await askLuneCodingQuestion(nextStep.question, nextStep.num_results);
-  //     })
-  //   default:
-  //     thread.events.push({
-  //       type: 'error',
-  //       data: `you called a tool that is not implemented: ${(nextStep as any).intent}, something is wrong with your internal programming, please get help from a human`,
-  //     })
-  //     return thread
-  // }
+    default:
+      thread.events.push({
+        type: 'error',
+        data: `you called a tool that is not implemented: ${(nextStep as any).intent}, something is wrong with your internal programming, please get help from a human`,
+      })
+      return thread
+  }
 }
 
 // just keep folding

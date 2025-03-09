@@ -19,52 +19,12 @@ class DoneForNow {
 
 // 
 
-class HumanResponse {
-  event_type "human_response"
-  message string
-}
-
-
-class EmailMessage {
-  from_address string
-  to_address string[]
-  cc_address string[]
-  subject string
-  content string
-  datetime string
-}
-
-class EmailPayload {
-  from_address string
-  to_address string
-  subject string
-  body string
-  message_id string
-  previous_thread EmailMessage[]
-  raw_email string
-  is_test bool?
-}
-
-class SlackMessage {
-  from_user_id string
-  channel_id string
-  content string
-  message_id string
-}
-
-
-class SlackThread {
-  thread_ts string
-  channel_id string
-  events SlackMessage[]
-}
-
 //
 // Events and Threads
 //
 class Event {
   type string
-  data EmailPayload | RunCustomJavascriptCode | ListEnvironmentVariablesAvailableToCode | AskLuneCodingQuesiton | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string
+  data EmailPayload | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string
 }
 
 
@@ -79,7 +39,7 @@ function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
-) -> ClarificationRequest | DoneForNow | RunCustomJavascriptCode | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | IntentListVercelDeployments | IntentPromoteVercelDeployment {
+) -> ClarificationRequest | DoneForNow | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | IntentListVercelDeployments | IntentPromoteVercelDeployment {
     client CustomGPT4o
 
     prompt #"
@@ -146,3 +106,26 @@ test InboundGitCommits {
   @@assert(intent, {{this.intent == "list_git_commits"}})
 }
 
+
+test TestUndeployedCommits {
+  functions [DetermineNextStep]
+  args {
+    thread #"
+      <slack_message_received>
+                is_test: false
+      type: agent_slack.received
+      event:
+        thread_ts: '1741484452358769'
+        channel_id: C07HR5LJ0KT
+        events:
+          - from_user_id: U07HR5DNQBB
+            channel_id: C07HR5LJ0KT
+            content: do we have any git commits that need to be deployed?
+            message_ts: '1741484452358769'
+      
+      </slack_message_received>
+            
+    "#
+  }
+  @@assert(intent, {{this.intent == "list_git_commits"}})
+}

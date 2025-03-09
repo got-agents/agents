@@ -20,7 +20,7 @@ export type V1Beta2SlackEventReceived = {
 }
 
 
-type EmailMessage = {
+export type EmailMessage = {
   from_address: string
   to_address: string[]
   cc_address: string[]
@@ -30,7 +30,7 @@ type EmailMessage = {
   datetime: string
 }
 
-type EmailPayload = {
+export type EmailPayload = {
   from_address: string
   to_address: string
   subject: string
