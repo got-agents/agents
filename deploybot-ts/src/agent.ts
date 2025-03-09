@@ -191,9 +191,35 @@ const _handleNextStep = async (
       return await appendResult(thread, async () => {
         try {
           const deployments = await listVercelDeployments();
+          
+          // Find production deployment
+          const productionDeployment = deployments.find(d => d.is_current_production);
+          
+          // Format a more readable response
+          const formattedDeployments = deployments.map(d => {
+            const productionTag = d.is_current_production ? ' [CURRENT PRODUCTION]' : '';
+            return {
+              name: d.name,
+              url: d.url,
+              status: d.status,
+              environment: d.environment,
+              created_at: d.created_at,
+              author: d.author,
+              production: d.is_current_production
+            };
+          });
+          
+          let message = `Found ${deployments.length} recent deployments.\n`;
+          
+          if (productionDeployment) {
+            message += `\nCurrent production deployment: ${productionDeployment.name} (${productionDeployment.url})`;
+          } else {
+            message += "\nNo production deployment found.";
+          }
+          
           return {
-            deployments,
-            message: `Found ${deployments.length} recent deployments.`
+            deployments: formattedDeployments,
+            message
           };
         } catch (error: any) {
           console.error('Error listing deployments:', error);
