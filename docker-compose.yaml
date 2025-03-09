@@ -28,8 +28,9 @@ services:
       - .env
     environment:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
+      DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
     ports:
-      - "8001:3000"
+      - "8001:8000"
     depends_on:
       - redis
     volumes:

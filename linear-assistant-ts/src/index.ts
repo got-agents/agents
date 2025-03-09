@@ -132,8 +132,7 @@ setInterval(() => {
       2,
     )}%`,
   )
-  cacheStats.reset() // Reset counters after logging
-}, 60000) // 60000ms = 1 minute
+}, 60 * 1000 * 1000) // 60000000ms = 1 hour
 
 // Modify appendResult function to track cache stats
 const appendResult = async (

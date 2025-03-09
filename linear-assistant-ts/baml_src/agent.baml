@@ -24,6 +24,21 @@ class EmailPayload {
   is_test bool?
 }
 
+class SlackMessage {
+  from_user_id string
+  channel_id string
+  content string
+  message_ts string
+}
+
+
+class SlackThread {
+  thread_ts string
+  channel_id string
+  events SlackMessage[]
+}
+
+
 //
 // Events and Threads
 //
@@ -35,6 +50,11 @@ class Event {
 
 class Thread {
   initial_email EmailPayload
+  events Event[]
+}
+
+class SlackInitiatedThread {
+  initial_slack_message SlackThread
   events Event[]
 }
 

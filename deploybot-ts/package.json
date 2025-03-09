@@ -8,7 +8,10 @@
     "dev-reload": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsc --noEmit && jest",
+    "test:types": "tsc --noEmit",
+    "test:unit": "jest",
+    "baml:generate": "npx @boundaryml/baml generate"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +24,7 @@
     "body-parser": "^1.20.3",
     "express": "^4.21.2",
     "humanlayer": "^0.7.4",
-    "ioredis": "^5.4.2",
+    "ioredis": "^5.6.0",
     "js-yaml": "^4.1.0",
     "loops": "^4.0.0",
     "node-cache": "^5.1.2",
@@ -29,10 +32,13 @@
     "svix": "^1.45.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9"
+    "@types/jest": "^29.5.14",
+    "@types/js-yaml": "^4.0.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.6",
+    "typescript": "^5.8.2"
   }
 }
