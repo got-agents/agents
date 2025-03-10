@@ -14,7 +14,6 @@ import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
 import { listVercelDeployments } from './tools/vercel'
 
-
 // Events and Threads
 export interface Event {
   type: string;
@@ -85,8 +84,6 @@ const lastEventToResultType: Record<string, Event['type']> = {
   promote_vercel_deployment: 'promote_vercel_deployment_result',
   error: 'error',
 }
-
-
 
 // Modify appendResult function to track cache stats
 const appendResult = async (
@@ -195,26 +192,46 @@ const _handleNextStep = async (
           // Find production deployment
           const productionDeployment = deployments.find(d => d.is_current_production);
           
-          // Format a more readable response
+          // Format deployments for display
           const formattedDeployments = deployments.map(d => {
-            const productionTag = d.is_current_production ? ' [CURRENT PRODUCTION]' : '';
+            const productionTag = d.is_current_production ? ' [PRODUCTION]' : '';
+            const branchInfo = d.branch ? `(${d.branch})` : '';
+            const commitInfo = d.commit_message ? `"${d.commit_message.substring(0, 50)}${d.commit_message.length > 50 ? '...' : ''}"` : '';
+            
             return {
-              name: d.name,
+              name: `${d.name}${productionTag}`,
               url: d.url,
               status: d.status,
               environment: d.environment,
               created_at: d.created_at,
               author: d.author,
-              production: d.is_current_production
+              branch: d.branch || 'unknown',
+              commit: commitInfo,
+              is_production: d.is_current_production
             };
           });
           
-          let message = `Found ${deployments.length} recent deployments.\n`;
+          // Create a more readable summary
+          let message = `Found ${deployments.length} recent deployments:\n`;
+          
+          deployments.forEach((d, index) => {
+            const productionMark = d.is_current_production ? '[PRODUCTION] ' : '';
+            const dateStr = d.created_at !== 'unknown' ? new Date(d.created_at).toLocaleString() : 'unknown date';
+            const branchInfo = d.branch ? `branch: ${d.branch}` : '';
+            const commitInfo = d.commit_message ? `commit: ${d.commit_message.substring(0, 40)}${d.commit_message.length > 40 ? '...' : ''}` : '';
+            
+            message += `\n${index + 1}. ${productionMark}${d.name}\n`;
+            message += `   URL: ${d.url}\n`;
+            message += `   Created: ${dateStr} by ${d.author}\n`;
+            if (branchInfo || commitInfo) {
+              message += `   ${branchInfo}${branchInfo && commitInfo ? ', ' : ''}${commitInfo}\n`;
+            }
+          });
           
           if (productionDeployment) {
             message += `\nCurrent production deployment: ${productionDeployment.name} (${productionDeployment.url})`;
           } else {
-            message += "\nNo production deployment found.";
+            message += "\nNo production deployment identified. Consider promoting a deployment to production.";
           }
           
           return {
@@ -259,7 +276,6 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
 
   console.log(`contactChannel: ${JSON.stringify(contactChannel)}`)
   const hl = humanlayer({ contactChannel })
-
 
   let nextThread: Thread | false = thread
 
