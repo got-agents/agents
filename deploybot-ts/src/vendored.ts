@@ -1,5 +1,8 @@
 import { HumanContact, FunctionCall } from "humanlayer"
 
+// the rest of this stuff should come from humanlayer sdk
+// some exist but are not exported, others are to-be-added
+
 export type SlackMessage = {
   from_user_id: string
   channel_id: string
@@ -11,12 +14,6 @@ export type SlackThread = {
   thread_ts: string
   channel_id: string
   events: SlackMessage[]
-}
-
-export type V1Beta2SlackEventReceived = {
-  is_test?: boolean
-  type: 'agent_slack.received'
-  event: SlackThread
 }
 
 
@@ -47,6 +44,12 @@ export type V1Beta1AgentEmailReceived = {
   is_test: boolean
   event: EmailPayload
   type: 'agent_email.received'
+}
+
+export type V1Beta2SlackEventReceived = {
+  is_test?: boolean
+  type: 'agent_slack.received'
+  event: SlackThread
 }
 
 export type V1Beta1HumanContactCompleted = {

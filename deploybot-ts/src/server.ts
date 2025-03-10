@@ -38,6 +38,9 @@ const getTargetEmails = (): Set<string> => {
 
 const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
   console.log(`new slack thread received: ${JSON.stringify(payload)}`)
+
+  // todo validate allowed users/channels like we do for emails
+
   const thread: Thread = {
     initial_slack_message: payload.event,
     events: [
