@@ -2,7 +2,7 @@
 test-curl-new-thread:
 	curl -X POST http://localhost:8000/webhook/new-email-thread \
 		-H "Content-Type: application/json" \
-		-d '{"from_address": "test@example.com", \
+		-d '{"type": "agent_email.received", "event": {"from_address": "dexter@humanlayer.dev", \
 			"is_test": null, \
 			"to_address": "support@company.com", \
 			"subject": "New Ticket", \
@@ -10,7 +10,7 @@ test-curl-new-thread:
 			"message_id": "test123", \
 			"previous_thread": [], \
 			"raw_email": "raw email content" \
-			}'
+			}}'
 
 # this sucks for anything beyond basic smoke testing, most of the logic
 # should live in baml unittests
@@ -18,7 +18,7 @@ test-curl-new-thread:
 test-curl-continued-thread-human-contact:
 	curl -X POST http://localhost:8000/webhook/human-response-on-existing-thread \
 		-H "Content-Type: application/json" \
-		-d '{ \
+		-d '{"type": "human_contact.completed", "event": {\
 			"run_id": "agent-Zoe7fbx9D4c", \
 			"call_id": "call-LQvbqRWFCqg", \
 			"spec": { \
@@ -96,13 +96,13 @@ test-curl-continued-thread-human-contact:
 				"responded_at": null, \
 				"response": "use a different team id, perhaps try running list-teams?" \
 			} \
-		}'
+		}}'
 
 .PHONY: test-curl-continued-thread-function-call
 test-curl-continued-thread-function-call:
 	curl -X POST http://localhost:8000/webhook/human-response-on-existing-thread \
 		-H "Content-Type: application/json" \
-		-d '{ \
+		-d '{"type": "function_call.completed", "event": {\
 			"run_id": "agent-aGCBU_MschA", \
 			"call_id": "call-6z2u9JfyyWk", \
 			"spec": { \

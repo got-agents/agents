@@ -1,5 +1,5 @@
 services:
-  test__linear-assistant:
+  linear-assistant:
     stop_grace_period: "1s"
     build:
       context: ./linear-assistant-ts
@@ -7,6 +7,8 @@ services:
       - .env
     environment:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
+      DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
+      HUMANLAYER_API_KEY_NAME: LINEAR_ASSISTANT_HUMANLAYER_API_KEY
     volumes:
       - ../../humanlayer/agents/linear-assistant-ts/src:/app/src
       - ../../humanlayer/agents/linear-assistant-ts/package.json:/app/package.json
@@ -19,6 +21,32 @@ services:
         npm run dev-reload
     ports:
       - "8000:8000"
+  
+  deploybot:
+    stop_grace_period: "1s"
+    build:
+      context: ./deploybot-ts
+    env_file:
+      - .env
+    environment:
+      ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
+      DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
+      HUMANLAYER_API_KEY_NAME: DEPLOYBOT_HUMANLAYER_API_KEY
+    ports:
+      - "8001:8000"
+    depends_on:
+      - redis
+    volumes:
+      - ../../humanlayer/agents/deploybot-ts/src:/app/src
+      - ../../humanlayer/agents/deploybot-ts/package.json:/app/package.json
+      - ../../humanlayer/agents/deploybot-ts/package-lock.json:/app/package-lock.json
+      - ../../humanlayer/agents/deploybot-ts/tsconfig.json:/app/tsconfig.json
+    command:
+      - /bin/sh
+      - -c
+      - |
+        npm run dev-reload
+  
   redis:
     image: redis:6.2.6-alpine
     ports:

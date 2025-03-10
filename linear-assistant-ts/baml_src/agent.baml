@@ -1,50 +1,10 @@
-class HumanResponse {
-  event_type "human_response"
-  message string
-}
-
-
-class EmailMessage {
-  from_address string
-  to_address string[]
-  cc_address string[]
-  subject string
-  content string
-  datetime string
-}
-
-class EmailPayload {
-  from_address string
-  to_address string
-  subject string
-  body string
-  message_id string
-  previous_thread EmailMessage[]
-  raw_email string
-  is_test bool?
-}
-
-//
-// Events and Threads
-//
-class Event {
-  type string
-  data EmailPayload | HumanResponse | CreateIssue | ListTeams | ListIssues | ClarificationRequest | DoneForNow | ListTeams | ListUsers | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | UpdateIssue | ListWorkflowStates | string
-}
-
-
-class Thread {
-  initial_email EmailPayload
-  events Event[]
-}
-
 
 function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
 ) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue | SearchLabels {
-    client CustomGPT4o
+    client CustomSonnet
 
     prompt #"
         {{ _.role("system") }}
