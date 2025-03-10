@@ -2,7 +2,7 @@
 test-curl-new-thread:
 	curl -X POST http://localhost:8000/webhook/new-email-thread \
 		-H "Content-Type: application/json" \
-		-d '{"type": "agent_email.received", "event": {"from_address": "test@example.com", \
+		-d '{"type": "agent_email.received", "event": {"from_address": "dexter@humanlayer.dev", \
 			"is_test": null, \
 			"to_address": "support@company.com", \
 			"subject": "New Ticket", \
