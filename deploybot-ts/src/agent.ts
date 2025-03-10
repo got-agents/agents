@@ -102,10 +102,10 @@ const appendResult = async (
   }
   try {
     const result = await fn()
-    const squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
+    // const squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
     thread.events.push({
       type: responseType,
-      data: squashedEvent as string,
+      data: result,
     })
   } catch (e) {
     console.error(e)
@@ -186,62 +186,9 @@ const _handleNextStep = async (
       })
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
-        try {
-          const deployments = await listVercelDeployments();
-          
-          // Find production deployment
-          const productionDeployment = deployments.find(d => d.is_current_production);
-          
-          // Format deployments for display
-          const formattedDeployments = deployments.map(d => {
-            const productionTag = d.is_current_production ? ' [PRODUCTION]' : '';
-            const branchInfo = d.branch ? `(${d.branch})` : '';
-            const commitInfo = d.commit_message ? `"${d.commit_message.substring(0, 50)}${d.commit_message.length > 50 ? '...' : ''}"` : '';
-            
-            return {
-              name: `${d.name}${productionTag}`,
-              url: d.url,
-              status: d.status,
-              environment: d.environment,
-              created_at: d.created_at,
-              author: d.author,
-              branch: d.branch || 'unknown',
-              commit: commitInfo,
-              is_production: d.is_current_production
-            };
-          });
-          
-          // Create a more readable summary
-          let message = `Found ${deployments.length} recent deployments:\n`;
-          
-          deployments.forEach((d, index) => {
-            const productionMark = d.is_current_production ? '[PRODUCTION] ' : '';
-            const dateStr = d.created_at !== 'unknown' ? new Date(d.created_at).toLocaleString() : 'unknown date';
-            const branchInfo = d.branch ? `branch: ${d.branch}` : '';
-            const commitInfo = d.commit_message ? `commit: ${d.commit_message.substring(0, 40)}${d.commit_message.length > 40 ? '...' : ''}` : '';
-            
-            message += `\n${index + 1}. ${productionMark}${d.name}\n`;
-            message += `   URL: ${d.url}\n`;
-            message += `   Created: ${dateStr} by ${d.author}\n`;
-            if (branchInfo || commitInfo) {
-              message += `   ${branchInfo}${branchInfo && commitInfo ? ', ' : ''}${commitInfo}\n`;
-            }
-          });
-          
-          if (productionDeployment) {
-            message += `\nCurrent production deployment: ${productionDeployment.name} (${productionDeployment.url})`;
-          } else {
-            message += "\nNo production deployment identified. Consider promoting a deployment to production.";
-          }
-          
-          return {
-            deployments: formattedDeployments,
-            message
-          };
-        } catch (error: any) {
-          console.error('Error listing deployments:', error);
-          return `Error fetching Vercel deployments: ${error}`;
-        }
+        const deployments = await listVercelDeployments();
+        // todo this is 
+        return deployments;
       })
     case 'promote_vercel_deployment':
       return await appendResult(thread, async () => {
