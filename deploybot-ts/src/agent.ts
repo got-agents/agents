@@ -216,7 +216,7 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
   } : {
     slack: {
       channel_or_user_id: thread.initial_slack_message?.channel_id || "",
-      // todo support threads?
+      // todo support replying in a thread
       // thread_ts: thread.initial_slack_message?.thread_ts || "",
     }
   }
