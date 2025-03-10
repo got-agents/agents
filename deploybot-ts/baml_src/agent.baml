@@ -17,24 +17,6 @@ class DoneForNow {
 }
 
 
-// 
-
-//
-// Events and Threads
-//
-class Event {
-  type string
-  data EmailPayload | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string
-}
-
-
-class Thread {
-  initial_email EmailPayload?
-  initial_slack_message SlackThread?
-  events Event[]
-}
-
-
 function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)

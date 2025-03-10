@@ -7,6 +7,8 @@ services:
       - .env
     environment:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
+      DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
+      HUMANLAYER_API_KEY_NAME: LINEAR_ASSISTANT_HUMANLAYER_API_KEY
     volumes:
       - ../../humanlayer/agents/linear-assistant-ts/src:/app/src
       - ../../humanlayer/agents/linear-assistant-ts/package.json:/app/package.json
@@ -29,6 +31,7 @@ services:
     environment:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
       DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
+      HUMANLAYER_API_KEY_NAME: DEPLOYBOT_HUMANLAYER_API_KEY
     ports:
       - "8001:8000"
     depends_on:

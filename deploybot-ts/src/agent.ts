@@ -14,6 +14,8 @@ import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
 import { listVercelDeployments } from './tools/vercel'
 
+const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
+
 // Events and Threads
 export interface Event {
   type: string;
@@ -186,8 +188,8 @@ const _handleNextStep = async (
       })
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
+        // TODO - claude wrote this and IDK if its correct
         const deployments = await listVercelDeployments();
-        // todo this is 
         return deployments;
       })
     case 'promote_vercel_deployment':
@@ -222,7 +224,7 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
   }
 
   console.log(`contactChannel: ${JSON.stringify(contactChannel)}`)
-  const hl = humanlayer({ contactChannel })
+  const hl = humanlayer({ contactChannel, apiKey: HUMANLAYER_API_KEY })
 
   let nextThread: Thread | false = thread
 
