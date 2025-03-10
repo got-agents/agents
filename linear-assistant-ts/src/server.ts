@@ -10,7 +10,7 @@ import {
   EmailPayload,
 } from './baml_client'
 
-import { handleHumanResponse, handleNextStep, threadToPrompt, Thread, Event } from './agent'
+import { handleHumanResponse, handleNextStep, threadToPrompt, Thread, Event, newLogger, _handleNextStep } from './agent'
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = process.env.LOOPS_API_KEY ? new LoopsClient(process.env.LOOPS_API_KEY) : undefined
@@ -93,8 +93,11 @@ type FunctionCallWebhookPayload = {
 type WebhookPayload = EmailWebhookPayload | HumanContactWebhookPayload | FunctionCallWebhookPayload
 
 const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response) => {
+  const threadId = (Math.random() * 1000000).toString()
+  const logger = newLogger(threadId)
+
   if (payload.is_test || payload.event.from_address === 'overworked-admin@coolcompany.com') {
-    console.log('test email received, skipping')
+    logger.log('test email received, skipping')
     res.json({ status: 'ok', intent: 'test' })
     return
   }
@@ -139,6 +142,7 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
   Promise.resolve().then(async () => {
     const body: EmailPayload = payload.event
     let thread: Thread = {
+      id: (Math.random() * 1000000).toString(),
       initial_email: body,
       events: [
         {
@@ -147,6 +151,8 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
         },
       ],
     }
+
+    const logger = newLogger(thread.id)
 
     try {
       const _fake_humanlayer = undefined as any
@@ -165,14 +171,14 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
 
       const results = await Promise.all(
         prefillOps.map(op => {
-          console.log(`Prefilling context for ${op.intent}`);
-          return handleNextStep(thread, linearClient, loops, redis);
+          logger.log(`Prefilling context for ${op.intent}`);
+          return _handleNextStep(thread, op as any, _fake_humanlayer, linearClient, loops, redis);
         })
       );
 
       await handleNextStep(thread, linearClient, loops, redis)
     } catch (e) {
-      console.error('Error processing new email thread:', e)
+      console.error(`Error processing new email thread: ${e}`)
     }
   })
 }
@@ -197,13 +203,14 @@ const callCompletedHandler = async (
   res.json({ status: 'ok' })
 
   Promise.resolve().then(async () => {
+    let thread: Thread
+    thread = humanResponse.spec.state as Thread
+    const logger = newLogger(thread.id)
+    logger.log(`human_response received: ${JSON.stringify(humanResponse)}`)
     try {
-      let thread: Thread
-      thread = humanResponse.spec.state as Thread
-      console.log(`human_response received: ${JSON.stringify(humanResponse)}`)
       await handleHumanResponse(thread, payload, linearClient, loops, redis)
     } catch (e) {
-      console.error('Error processing human response:', e)
+      logger.error(`Error processing human response: ${e}`)
     }
   })
 }
@@ -260,7 +267,7 @@ const webhookHandler = (req: Request, res: Response) => {
     case 'function_call.completed':
       return callCompletedHandler(payload, res)
     default:
-      console.log(`unknown webhook type: ${payload.type}`)
+      console.log(`unknown webhook type: ${(payload as any).type }`)
       res.status(400).json({ error: 'Unknown webhook type' })
   }
 }

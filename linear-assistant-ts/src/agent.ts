@@ -6,7 +6,6 @@ import {
   ClarificationRequest,
   CreateIssue,
   DoneForNow,
-  EmailPayload,
   GetIssueComments,
   ListIssues,
   ListLabels,
@@ -22,7 +21,27 @@ import {
 
 import * as yaml from 'js-yaml'
 import { createHash } from 'crypto'
+import { EmailPayload } from './vendored'
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
+
+export const newLogger = (id: string) => {
+  return {
+    log: (message: string) => {
+      console.log(`${id} - ${message}`)
+    },
+    error: (message: string) => {
+      console.error(`${id} - ${message}`)
+    },
+    warn: (message: string) => {
+      console.warn(`${id} - ${message}`)
+    },
+    info: (message: string) => {
+      console.info(`${id} - ${message}`)
+    },
+  }
+}
+
+const defaultLogger = newLogger('default')
 
 export interface Event {
   type: string;
@@ -33,6 +52,7 @@ export interface Event {
 }
 
 export interface Thread {
+  id: string; // internal id for logging
   initial_email: EmailPayload;
   events: Event[];
 }
@@ -106,6 +126,7 @@ export const appendResult = async (
   cacheKey?: string,
   redis?: any
 ): Promise<Thread> => {
+  const logger = newLogger(thread.id)
   const lastEvent: Event = thread.events.slice(-1)[0]
   const responseType: Event['type'] = lastEventToResultType[lastEvent.type]
   if (!responseType) {
@@ -151,16 +172,18 @@ export const appendResult = async (
       result = await fn()
       squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
     }
+    logger.log(`pushing event: ${squashedEvent}`)
     thread.events.push({
       type: responseType,
       data: squashedEvent as string,
     })
   } catch (e) {
-    console.error(e)
+    logger.error(e)
     const errorEvent = await b.SquashResponseContext(
       threadToPrompt(thread),
       `error running ${thread.events.slice(-1)[0].type}: ${e}`,
     )
+    logger.log(`pushing event: ${errorEvent}`)
     thread.events.push({
       type: 'error',
       data: errorEvent,
@@ -193,6 +216,7 @@ export const _handleNextStep = async (
   loops?: any,
   redis?: any,
 ): Promise<Thread | false> => {
+  const logger = newLogger(thread.id)
   switch (nextStep.intent) {
     case 'done_for_now':
       thread.events.push({
@@ -219,7 +243,7 @@ export const _handleNextStep = async (
           state: thread,
         },
       })
-      console.log(`thread sent to humanlayer`)
+      logger.log(`thread sent to humanlayer`)
       return false
     case 'create_issue':
       thread.events.push({
@@ -227,14 +251,19 @@ export const _handleNextStep = async (
         data: nextStep,
       })
 
-      await hl.createFunctionCall({
-        spec: {
-          fn: 'create_issue',
+      try {
+        await hl.createFunctionCall({
+          spec: {
+            fn: 'create_issue',
           kwargs: nextStep.issue,
           state: thread,
         },
       })
-      console.log(`thread sent to humanlayer`)
+      } catch (e) {
+        logger.error(`error creating issue: ${JSON.stringify(e)}`)
+        return false
+      }
+      logger.log(`thread sent to humanlayer`)
       return false
     case 'add_comment':
       thread.events.push({
@@ -447,6 +476,7 @@ export const handleNextStep = async (
   loops?: any,
   redis?: any
 ): Promise<void> => {
+  const logger = newLogger(thread.id)
   const hl = humanlayer({
     apiKey: HUMANLAYER_API_KEY,
     contactChannel: {
@@ -468,17 +498,20 @@ export const handleNextStep = async (
   while (true) {
     const nextStep = await b.DetermineNextStep(threadToPrompt(nextThread))
 
-    console.log(`===============`)
-    console.log(threadToPrompt(thread))
-    console.log(nextStep)
-    console.log(`===============`)
+    logger.log(`==========================`)
+    logger.log(`==========================`)
+    logger.log(`======= Last Event ========`)
+    logger.log(eventToPrompt(thread.events.slice(-1)[0]))
+    logger.log(`======= Next Step ========`)
+    logger.log(stringifyToYaml(nextStep))
+    logger.log(`====== Handling Next Step ========`)
 
     nextThread = await _handleNextStep(thread, nextStep, hl, linearClient, loops, redis)
     if (!nextThread) {
-      console.log(`nextThread is false, breaking`)
+      logger.log(`nextThread is false, breaking`)
       return
     }
-    console.log(`nextThread is truthy, continuing, last event is ${stringifyToYaml(nextThread.events.slice(-1)[0])}`)
+    logger.log(`nextThread is truthy, continuing, last event is ${stringifyToYaml(nextThread.events.slice(-1)[0])}`)
   }
 }
 

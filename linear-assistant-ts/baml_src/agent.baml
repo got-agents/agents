@@ -4,7 +4,7 @@ function DetermineNextStep(
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
 ) -> ClarificationRequest | CreateIssue | ListTeams | ListIssues | ListUsers | DoneForNow | AddComment | SearchIssues | GetIssueComments | ListLabels | ListProjects | AddUserToLoopsMailingList | ListLoopsMailingLists | ListWorkflowStates | UpdateIssue | SearchLabels {
-    client CustomGPT4o
+    client CustomSonnet
 
     prompt #"
         {{ _.role("system") }}
