@@ -18,9 +18,10 @@ services:
       - /bin/sh
       - -c
       - |
-        npm run dev-reload
+        npm run dev-reload-debug
     ports:
       - "8000:8000"
+      - "5858:5858"
   
   deploybot:
     stop_grace_period: "1s"

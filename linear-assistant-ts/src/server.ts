@@ -1,13 +1,13 @@
 import express, { Express, Request, Response } from 'express'
 import { LinearClient } from '@linear/sdk'
 import { FunctionCall, HumanContact, humanlayer } from 'humanlayer'
+import { EmailPayload } from './vendored'
 import Redis from 'ioredis'
 import { LoopsClient } from 'loops'
 import { Webhook } from 'svix'
 import bodyParser from 'body-parser'
 import {
   b,
-  EmailPayload,
 } from './baml_client'
 
 import { handleHumanResponse, handleNextStep, threadToPrompt, Thread, Event, newLogger, _handleNextStep } from './agent'
