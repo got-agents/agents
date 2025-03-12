@@ -169,7 +169,8 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
         prefillOps.push({ intent: 'list_loops_mailing_lists' });
       }
 
-      const results = await Promise.all(
+      // dont need results, this mutates the thread
+      await Promise.all(
         prefillOps.map(op => {
           logger.log(`Prefilling context for ${op.intent}`);
           return _handleNextStep(thread, op as any, _fake_humanlayer, linearClient, loops, redis);

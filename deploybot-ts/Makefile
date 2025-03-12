@@ -13,7 +13,7 @@ test-curl-new-thread:
 					{ \
 						"from_user_id": "U07HR5DNQBB", \
 						"channel_id": "C07HR5LJ0KT", \
-						"content": "do we have any git commits that need to be deployed?", \
+						"content": "@deploybot do we have any git commits that need to be deployed?", \
 						"message_ts": "1741484452358769" \
 					} \
 				] \
