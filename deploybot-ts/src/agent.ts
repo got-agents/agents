@@ -194,6 +194,8 @@ const _handleNextStep = async (
       })
     case 'promote_vercel_deployment':
       return await appendResult(thread, async () => {
+        // this should probably come from a github action, not direct interface
+        // with the vercel api
         return 'promoting deployments is not supported yet'
       })
     default:

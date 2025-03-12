@@ -1,13 +1,13 @@
 import express, { Express, Request, Response } from 'express'
 import { LinearClient } from '@linear/sdk'
 import { FunctionCall, HumanContact, humanlayer } from 'humanlayer'
+import { EmailPayload } from './vendored'
 import Redis from 'ioredis'
 import { LoopsClient } from 'loops'
 import { Webhook } from 'svix'
 import bodyParser from 'body-parser'
 import {
   b,
-  EmailPayload,
 } from './baml_client'
 
 import { handleHumanResponse, handleNextStep, threadToPrompt, Thread, Event, newLogger, _handleNextStep } from './agent'
@@ -169,7 +169,8 @@ const newEmailThreadHandler = async (payload: EmailWebhookPayload, res: Response
         prefillOps.push({ intent: 'list_loops_mailing_lists' });
       }
 
-      const results = await Promise.all(
+      // dont need results, this mutates the thread
+      await Promise.all(
         prefillOps.map(op => {
           logger.log(`Prefilling context for ${op.intent}`);
           return _handleNextStep(thread, op as any, _fake_humanlayer, linearClient, loops, redis);
