@@ -255,7 +255,7 @@ export async function serve() {
   console.log(`fetching project from ${apiBase}/project`)
   const project = await fetch(`${apiBase}/project`, {
     headers: {
-      Authorization: `Bearer ${process.env.HUMANLAYER_API_KEY}`,
+      Authorization: `Bearer ${process.env.DEPLOYBOT_HUMANLAYER_API_KEY}`,
     },
   })
   console.log(await project.json())
