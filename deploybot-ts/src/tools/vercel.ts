@@ -27,7 +27,7 @@ export async function listVercelDeployments(): Promise<VercelDeployment[]> {
   }
 
   // First, get the project aliases to determine production deployment
-  const aliasesResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}/domains`, {
+  const aliasesResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}/domains?teamId=${process.env.VERCEL_TEAM_ID}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -59,7 +59,7 @@ export async function listVercelDeployments(): Promise<VercelDeployment[]> {
   }
 
   // Now get all deployments
-  const response = await fetch(`https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=10`, {
+  const response = await fetch(`https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=10&teamId=${process.env.VERCEL_TEAM_ID}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
