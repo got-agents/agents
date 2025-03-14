@@ -10,10 +10,10 @@ services:
       DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
       HUMANLAYER_API_KEY_NAME: LINEAR_ASSISTANT_HUMANLAYER_API_KEY
     volumes:
-      - ../../humanlayer/agents/linear-assistant-ts/src:/app/src
-      - ../../humanlayer/agents/linear-assistant-ts/package.json:/app/package.json
-      - ../../humanlayer/agents/linear-assistant-ts/package-lock.json:/app/package-lock.json
-      - ../../humanlayer/agents/linear-assistant-ts/tsconfig.json:/app/tsconfig.json
+      - ./linear-assistant-ts/src:/app/src
+      - ./linear-assistant-ts/package.json:/app/package.json
+      - ./linear-assistant-ts/package-lock.json:/app/package-lock.json
+      - ./linear-assistant-ts/tsconfig.json:/app/tsconfig.json
     command:
       - /bin/sh
       - -c
@@ -38,10 +38,10 @@ services:
     depends_on:
       - redis
     volumes:
-      - ../../humanlayer/agents/deploybot-ts/src:/app/src
-      - ../../humanlayer/agents/deploybot-ts/package.json:/app/package.json
-      - ../../humanlayer/agents/deploybot-ts/package-lock.json:/app/package-lock.json
-      - ../../humanlayer/agents/deploybot-ts/tsconfig.json:/app/tsconfig.json
+      - ./deploybot-ts/src:/app/src
+      - ./deploybot-ts/package.json:/app/package.json
+      - ./deploybot-ts/package-lock.json:/app/package-lock.json
+      - ./deploybot-ts/tsconfig.json:/app/tsconfig.json
     command:
       - /bin/sh
       - -c

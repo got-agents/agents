@@ -84,16 +84,25 @@ export function verifyGitHubWebhook(payload: string, signature: string): boolean
 
 /**
  * List recent commits from the repository
- * @param limit Number of commits to fetch (default: 10)
+ * @param limit Number of commits to fetch (default: 1)
  * @returns Array of GitCommit objects
  */
-export async function listGitCommits(limit: number = 10): Promise<GitCommit[]> {
+export async function listGitCommits(limit: number = 1): Promise<GitCommit[]> {
   try {
+    console.log(`Fetching latest commit from ${owner}/${repo} default branch...`);
+    
     const response = await octokit.repos.listCommits({
       owner,
       repo,
-      per_page: limit,
+      per_page: 1,  // We only need the latest commit
+      sha: 'main',  // Only from main branch
     });
+
+    if (!response.data || !Array.isArray(response.data)) {
+      throw new Error('Invalid response from GitHub API - no commits data');
+    }
+
+    console.log(`Successfully fetched ${response.data.length} commits`);
 
     // Get all tags to match with commits
     const tags = await listGitTags();
@@ -116,9 +125,26 @@ export async function listGitCommits(limit: number = 10): Promise<GitCommit[]> {
       url: commit.html_url || '',
       tags: tagsBySha[commit.sha] || [],
     }));
-  } catch (error) {
-    console.error('Error fetching git commits:', error);
-    throw error;
+  } catch (error: any) {
+    // Add more detailed error information
+    const errorMessage = error.response?.data?.message || error.message;
+    const status = error.response?.status;
+    console.error('Error fetching git commits:', {
+      error: errorMessage,
+      status,
+      owner,
+      repo,
+      tokenExists: !!process.env.GITHUB_TOKEN,
+      tokenPrefix: process.env.GITHUB_TOKEN?.substring(0, 10)
+    });
+    
+    if (status === 404) {
+      throw new Error(`Repository ${owner}/${repo} not found or token doesn't have access`);
+    } else if (status === 401) {
+      throw new Error('GitHub token is invalid or expired');
+    } else {
+      throw new Error(`GitHub API error: ${errorMessage}`);
+    }
   }
 }
 
@@ -186,12 +212,26 @@ export async function triggerWorkflowDispatch(
   inputs?: Record<string, string>
 ) {
   try {
+    // Validate workflow ID to prevent accidental triggers
+    if (workflowId !== 'tag-and-push-prod.yaml') {
+      throw new Error('Invalid workflow ID - only tag-and-push-prod.yaml is allowed');
+    }
+
+    // Validate ref to ensure we only deploy from main
+    if (ref !== 'main') {
+      throw new Error('Invalid ref - can only deploy from main branch');
+    }
+
     await octokit.actions.createWorkflowDispatch({
       owner,
       repo,
       workflow_id: workflowId,
       ref,
-      inputs,
+      inputs: {
+        ...inputs,
+        triggered_by: 'deploybot',
+        environment: 'production'
+      }
     });
   } catch (error) {
     console.error('Error triggering workflow dispatch:', error);
