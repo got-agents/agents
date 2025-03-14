@@ -8,6 +8,10 @@ export type SlackMessage = {
   channel_id: string
   content: string
   message_ts: string
+  user_id?: string  
+  type?: string     
+  text?: string
+  ts?: string
 }
 
 export type SlackThread = {
@@ -58,8 +62,49 @@ export type V1Beta1HumanContactCompleted = {
   type: 'human_contact.completed'
 }
 
-export type V1Beta1FunctionCallCompleted = {
-  is_test: boolean
-  event: FunctionCall
-  type: 'function_call.completed'
+export interface SlackChannelConfig {
+  allowed_responder_ids?: string[];
+  bot_token?: string;
+  channel_or_user_id: string;
+  context_about_channel_or_user?: string;
+  experimental_slack_blocks?: boolean;
+}
+
+export interface ChannelConfig {
+  email?: any;
+  slack?: SlackChannelConfig;
+  sms?: any;
+  whatsapp?: any;
+}
+
+export interface FunctionCallSpec {
+  fn: string;
+  kwargs: Record<string, any>;
+  state: any;
+  channel?: ChannelConfig;
+  reject_options?: Array<{
+    description: string;
+    interactive: boolean;
+    name: string;
+    prompt_fill: string;
+    title: string;
+  }>;
+}
+
+export interface FunctionCallOptions {
+  run_id?: string;
+  call_id: string;
+  spec: FunctionCallSpec;
+}
+
+export interface V1Beta1FunctionCallCompleted {
+  is_test: boolean;
+  event: FunctionCall;
+  type: 'function_call.completed';
+  call_id: string;
+  status?: {
+    approved?: boolean;
+    comment?: string;
+  };
+  spec: FunctionCallSpec;
 }
