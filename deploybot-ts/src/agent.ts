@@ -189,11 +189,7 @@ const _handleNextStep = async (
 
       return false
     case 'await':
-      thread.events.push({
-        type: 'await',
-        data: nextStep,
-      })
-      // todo we should have a tool to do this safely :slight_smile:
+      // todo we should have a tool to do this durably :slight_smile:
       console.log(`awaiting ${nextStep.seconds} seconds, reasoning: ${nextStep.reasoning}`)
       return await appendResult(thread, async () => {
         await new Promise(resolve => setTimeout(resolve, nextStep.seconds * 1000))
