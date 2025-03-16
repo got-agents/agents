@@ -217,7 +217,8 @@ const _handleNextStep = async (
           spec: {
             fn: 'promote_vercel_deployment',
             kwargs: {
-              deployment: nextStep.vercel_deployment.markdown,
+              new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
+              new_deployment: nextStep.vercel_deployment.markdown,
               previous_deployment: nextStep.previous_deployment.markdown,
             },
             state: thread,
@@ -304,13 +305,13 @@ export const handleHumanResponse = async (
       // promote_vercel_deployment approved, promote the deployment
       
       thread = await appendResult(thread, async () => {
-        console.log(`promoting vercel deployment: ${functionCall.spec.kwargs.vercel_deployment}`)
+        console.log(`promoting vercel deployment: ${functionCall.spec.kwargs.new_deployment}`)
         console.log(`previous deployment: ${functionCall.spec.kwargs.previous_deployment}`)
         const resp = await triggerWorkflowDispatch(
           'vercel-promote-to-prod.yaml',
           'main',
           {
-            'vercel_deployment_id': functionCall.spec.kwargs.vercel_deployment.deployment_id,
+            'vercel_deployment_id': functionCall.spec.kwargs.new_deployment_sha,
             // git_commit_sha: nextStep.vercel_deployment.git_commit_sha,
           })
         console.log(`resp: ${resp}`)
