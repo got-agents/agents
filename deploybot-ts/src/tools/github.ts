@@ -199,43 +199,46 @@ export async function triggerWorkflowDispatch(
   ref: string,
   inputs?: Record<string, string>
 ) {
-  try {
-    // Validate workflow ID to prevent accidental triggers
-    if (workflowId !== 'tag-and-push-prod.yaml' && workflowId !== 'vercel-promote-to-prod.yaml') {
-      throw new Error('Invalid workflow ID - only tag-and-push-prod.yaml and vercel-promote-to-prod.yaml are allowed');
+  // Validate workflow ID to prevent accidental triggers
+  if (workflowId !== 'tag-and-push-prod.yaml' && workflowId !== 'vercel-promote-to-prod.yaml') {
+    throw new Error('Invalid workflow ID - only tag-and-push-prod.yaml and vercel-promote-to-prod.yaml are allowed');
+  }
+
+  // Validate ref to ensure we only deploy from main
+  if (ref !== 'main') {
+    throw new Error('Invalid ref - can only deploy from main branch');
+  }
+
+  const resp = await octokit.actions.createWorkflowDispatch({
+    owner,
+    repo,
+    workflow_id: workflowId,
+    ref,
+    inputs: {
+      ...inputs,
     }
+  });
 
-    // Validate ref to ensure we only deploy from main
-    if (ref !== 'main') {
-      throw new Error('Invalid ref - can only deploy from main branch');
-    }
+  if (!resp.status || resp.status !== 204) {
+    throw new Error(`Failed to trigger workflow dispatch: ${resp.status}: ${resp.data}`);
+  }
 
-    const resp = await octokit.actions.createWorkflowDispatch({
-      owner,
-      repo,
-      workflow_id: workflowId,
-      ref,
-      inputs: {
-        ...inputs,
-      }
-    });
+  // wait up to 10 seconds for the workflow to start
+  await new Promise(resolve => setTimeout(resolve, 10000));
 
-    if (!resp.status || resp.status !== 204) {
-      throw new Error(`Failed to trigger workflow dispatch: ${resp.status}: ${resp.data}`);
-    }
+  return listGithubWorkflows({workflowId})
+} 
 
-    // wait up to 10 seconds for the workflow to start
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
+export async function listGithubWorkflows({workflowId, limit}: {workflowId: string, limit?: number}) {
     // Get recent workflow runs for this workflow to find the triggered one
     const runs = await octokit.actions.listWorkflowRuns({
       owner,
       repo,
       workflow_id: workflowId,
-      per_page: 5, // Limit to recent runs
+      per_page: limit || 3, // Limit to recent runs
     });
 
-    // Return any active runs
+    // Return any recent runs
     return {
       recent_runs: runs.data.workflow_runs.map(run => {
         return {
@@ -255,9 +258,4 @@ export async function triggerWorkflowDispatch(
         };
       }),
     }
-
-  } catch (error) {
-    console.error('Error triggering workflow dispatch:', error);
-    throw error;
-  }
-} 
+}

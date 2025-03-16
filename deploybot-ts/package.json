@@ -1,7 +1,7 @@
 {
-  "name": "linear-assistant-ts",
+  "name": "deploybot-ts",
   "version": "1.0.0",
-  "description": "Linear Assistant TypeScript Implementation",
+  "description": "Deploybot TypeScript Implementation",
   "main": "index.js",
   "scripts": {
     "dev": "tsx src/index.ts",

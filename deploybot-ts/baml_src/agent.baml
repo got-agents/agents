@@ -35,7 +35,7 @@ function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
-) -> Await | ClarificationRequest | DoneForNow | IntentListGitCommits | IntentListGitTags | IntentTagPushProd | IntentListVercelDeployments | IntentPromoteVercelDeployment | NothingToDo {
+) -> Await | ClarificationRequest | DoneForNow | IntentListGithubWorkflowRuns | IntentListGitCommits | IntentListGitTags | IntentTagPushProd | IntentListVercelDeployments | IntentPromoteVercelDeployment | NothingToDo {
     client CustomGPT4o
 
     prompt #"

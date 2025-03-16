@@ -36,7 +36,8 @@ services:
     ports:
       - "8001:8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     volumes:
       - ./deploybot-ts/src:/app/src
       - ./deploybot-ts/package.json:/app/package.json
@@ -50,6 +51,11 @@ services:
   
   redis:
     image: redis:6.2.6-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
     ports:
       - "6378:6379"
     volumes:

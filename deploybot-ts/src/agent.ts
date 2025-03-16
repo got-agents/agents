@@ -10,12 +10,13 @@ import {
   IntentPromoteVercelDeployment,
   NothingToDo,
   Await,
+  IntentListGithubWorkflowRuns,
 } from './baml_client'
 import Redis from 'ioredis'
 import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
 import { vercelClient } from './tools/vercel'
-import { listGitCommits, listGitTags, triggerWorkflowDispatch } from './tools/github'
+import { listGitCommits, listGithubWorkflows as listGithubWorkflowRuns, listGitTags, triggerWorkflowDispatch } from './tools/github'
 import { saveThreadState, getThreadState } from './state'
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
 
@@ -126,7 +127,8 @@ const _handleNextStep = async (
     | IntentListVercelDeployments
     | IntentPromoteVercelDeployment
     | NothingToDo
-    | Await,
+    | Await
+    | IntentListGithubWorkflowRuns,
   hl: HumanLayer,
 ): Promise<Thread | false> => {
   thread.events.push({
@@ -239,6 +241,10 @@ const _handleNextStep = async (
         },
       })
       return false
+    case 'list_github_workflow_runs':
+      return await appendResult(thread, async () => {
+        return listGithubWorkflowRuns({workflowId: nextStep.workflow_id, limit: nextStep.limit || 3})
+      })
     default:
       thread.events.push({
         type: 'error',
