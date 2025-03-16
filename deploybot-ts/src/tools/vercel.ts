@@ -1,106 +1,136 @@
 import fetch from 'node-fetch';
 
-export interface VercelDeployment {
-  name: string;
-  url: string;
-  status: string;
-  created_at: string;
-  author: string;
-  environment: string; // 'production', 'preview', etc.
-  is_current_production: boolean;
-  commit_message?: string;
-  branch?: string;
-  deployment_id: string;
+export function vercelClient() {
+  const token = process.env.VERCEL_BEARER_TOKEN
+  if (!token) {
+    throw new Error('VERCEL_BEARER_TOKEN is not set')
+  }
+  const teamId = process.env.VERCEL_TEAM_ID
+  if (!teamId) {
+    throw new Error('VERCEL_TEAM_ID is not set')
+  }
+  const projectId = process.env.VERCEL_PROJECT_ID
+  if (!projectId) {
+    throw new Error('VERCEL_PROJECT_ID is not set')
+  }
+
+  return {
+    getRecentDeployments: async () => {
+      return getRecentDeployments({teamId, projectId, token})
+    }
+  }
 }
 
-/**
- * Fetches deployments from Vercel API
- * TODO - claude wrote this and IDK if its correct
- * @returns List of deployments
- */
-export async function listVercelDeployments(): Promise<VercelDeployment[]> {
-  const token = process.env.VERCEL_BEARER_TOKEN;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  
-  if (!token || !projectId) {
-    throw new Error('Missing required environment variables: VERCEL_BEARER_TOKEN or VERCEL_PROJECT_ID');
-  }
+async function fetchVercel<T>(endpoint: string, options: {
+  token?: string;
+  headers?: Record<string, string>;
+  method?: string;
+} = {}): Promise<T> {
+  const baseUrl = 'https://api.vercel.com'
+  const url = `${baseUrl}${endpoint}`
+  console.log(`Making request to ${url}`)
 
-  // First, get the project aliases to determine production deployment
-  const aliasesResponse = await fetch(`https://api.vercel.com/v9/projects/${projectId}/domains?teamId=${process.env.VERCEL_TEAM_ID}`, {
+  const response = await fetch(url, {
+    ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${options.token}`,
       'Content-Type': 'application/json',
+      ...options.headers,
     },
-  });
-
-  if (!aliasesResponse.ok) {
-    console.warn(`Could not fetch domains: ${aliasesResponse.status} ${aliasesResponse.statusText}`);
-  }
-
-  // Find production deployment ID
-  let productionDeploymentId = '';
-  try {
-    const aliasesData = await aliasesResponse.json() as any;
-    if (aliasesData.domains && Array.isArray(aliasesData.domains)) {
-      // Look for production domains
-      const productionDomain = aliasesData.domains.find((domain: any) => 
-        domain.productionDeploymentId || 
-        (domain.gitBranch === 'main' || domain.gitBranch === 'master')
-      );
-      
-      if (productionDomain) {
-        productionDeploymentId = productionDomain.productionDeploymentId || '';
-        console.log(`Found production deployment ID: ${productionDeploymentId}`);
-      }
-    }
-  } catch (error) {
-    console.warn('Error parsing domains response:', error);
-  }
-
-  // Now get all deployments
-  const response = await fetch(`https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=10&teamId=${process.env.VERCEL_TEAM_ID}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`Vercel API error fetching deployments: ${response.status} ${response.statusText}`);
+    // probably want more detailed errors
+    const error = await response.json().catch(() => ({ message: response.statusText }))
+    throw new Error(`Vercel API error: ${error} ${response.statusText}`)
   }
 
-  const data = await response.json() as any;
-  
-  if (!data.deployments || !Array.isArray(data.deployments)) {
-    throw new Error('Unexpected response format from Vercel API');
+  // Only try to parse JSON if there's content
+  const contentType = response.headers.get('content-type')
+  if (contentType && contentType.includes('application/json')) {
+    return response.json() as T
   }
 
-  // Process deployments to extract useful information
-  return data.deployments.map((deployment: any) => {
-    // Extract git branch and commit message if available
-    const meta = deployment.meta || {};
-    const gitBranch = meta.gitBranch || meta.branch || 'unknown';
-    const commitMessage = meta.githubCommitMessage || meta.commitMessage || '';
-    const commitAuthor = meta.githubCommitAuthorName || meta.commitAuthorName || 'unknown';
-    
-    // Determine if this is a production deployment
-    const isProduction = deployment.id === productionDeploymentId || 
-                         deployment.target === 'production' ||
-                         gitBranch === 'main' || 
-                         gitBranch === 'master';
-    
-    return {
-      name: deployment.name || 'unnamed',
-      url: deployment.url ? `https://${deployment.url}` : 'no-url',
-      status: deployment.state || 'unknown',
-      created_at: deployment.created ? new Date(deployment.created).toISOString() : 'unknown',
-      author: commitAuthor,
-      environment: deployment.target || 'preview',
-      is_current_production: isProduction,
-      commit_message: commitMessage,
-      branch: gitBranch,
-      deployment_id: deployment.id || 'unknown'
-    };
-  });
+  // Return null for empty responses
+  return null as T
+} 
+
+export async function getRecentDeployments({teamId, projectId, token}: {
+  teamId: string;
+  projectId: string;
+  token: string;
+}) {
+  // Get latest deployments
+  const deployments = await fetchVercel<{
+    deployments: {
+      uid: string;
+      url: string;
+      created: number;
+      target: string;
+      state: string;
+      meta: {
+        githubCommitSha: string;
+        githubCommitRef: string;
+        githubCommitAuthorLogin: string;
+        githubCommitMessage: string;
+      };
+      readyState: string;
+      readySubstate: string;
+    }[];
+  }>(
+    `/v6/deployments?teamId=${teamId}&projectId=${projectId}&limit=100`,
+    {
+      token,
+      method: 'GET',
+    },
+  )
+
+  const makeVercelUrl = (uid: string) => `https://vercel.com/humanlayer/humanlayer-app-production/${uid.indexOf('dpl_') === 0 ? uid.slice(4) : uid}`
+
+  const deploymentsToLog: {
+    uid: string;
+    previewURL: string;
+    createdAt: string;
+    target: string;
+    state: string;
+    readyState: string;
+    readySubstate: string;
+    commitSha: string;
+    commitRef: string;
+    commitAuthor: string;
+    commitMessage: string;
+    viewOnVercelURL: string;
+  }[] = deployments.deployments.map(d => ({
+    uid: d.uid,
+    previewURL: d.url,
+    createdAt: new Date(d.created).toISOString(),
+    target: d.target,
+    state: d.state,
+    readyState: d.readyState,
+    readySubstate: d.readySubstate,
+    commitSha: d.meta?.githubCommitSha?.slice(0, 7),
+    commitRef: d.meta?.githubCommitRef,
+    commitAuthor: d.meta?.githubCommitAuthorLogin,
+    commitMessage: d.meta?.githubCommitMessage.slice(0, 60),
+    viewOnVercelURL: makeVercelUrl(d.uid),
+  }))
+
+  // Sort deployments by creation date, newest first
+  deploymentsToLog.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  // Filter to only show production deployments
+  const productionDeployments = deploymentsToLog.filter(d => d && d.target === 'production')
+  console.log('Found production deployments:')
+
+  const currentDeployment = productionDeployments.find(d => d.readySubstate === 'PROMOTED')
+  if (!currentDeployment) {
+    console.log('No promoted deployment found')
+  }
+  console.log('Current deployment:', currentDeployment)
+
+  return {
+    currentDeployment: currentDeployment,
+    recentDeployments: productionDeployments.slice(0, 10),
+  }
+
 }

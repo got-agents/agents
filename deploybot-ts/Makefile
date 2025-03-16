@@ -36,7 +36,7 @@ test-curl-list-vercel-deployments:
 					{ \
 						"from_user_id": "U07HR5DNQBB", \
 						"channel_id": "C07HR5LJ0KT", \
-						"content": "What are the recent vercel deployments with their state?", \
+						"content": "do we need to deploy anything to vercel?", \
 						"message_ts": "1741484452358769" \
 					} \
 				] \

@@ -16,12 +16,20 @@ class DoneForNow {
   "#)
 }
 
+class NothingToDo {
+  intent "nothing_to_do" @description("emit this intent if there is nothing to do")
+  message string @description(#"
+    emit this intent if there is nothing to do. 
+    This message will not be sent to a human, it will just be logged to the server.
+  "#)
+}
+
 
 function DetermineNextStep(
     // to keep this clean, make the client turn the thread into a prompt-ready string, 
     // didn't wanna solve that in jinja (although long term that's probably the best solution)
     thread: string 
-) -> ClarificationRequest | DoneForNow | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | IntentListVercelDeployments | IntentPromoteVercelDeployment {
+) -> ClarificationRequest | DoneForNow | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | IntentListVercelDeployments | IntentPromoteVercelDeployment | NothingToDo {
     client CustomGPT4o
 
     prompt #"
@@ -39,7 +47,7 @@ function DetermineNextStep(
 
         You have the following capabilities:
         - List Vercel deployments to see what's deployed where
-        - Promote a Vercel deployment from staging to production
+        - Promote a Vercel deployment from STAGED to PROMOTED
         - List git tags and commits on the production repo
         - Push new git tags to deploy backend changes
         - Contact a human for clarification, next steps, or to notify them of progress
@@ -58,6 +66,14 @@ function DetermineNextStep(
         - Keep users informed of progress
         - Handle one deployment task at a time
         - Verify successful completion
+
+        When describing a vercel deployment, always include:
+        - the Git sha with a link to the commit, e.g. https://github.com/metalytics-dev/metalytics/commit/SHA
+        - the link to view the deployment in vercel
+        - the commit message and author from the git commit
+
+        Team Process:
+        - Don't try to promote a vercel deployment that is older than the current production deployment, unless EXPLICITLY asked to do so
 
 
         {{ _.role("user") }}

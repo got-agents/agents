@@ -18,7 +18,8 @@
   "license": "ISC",
   "dependencies": {
     "@boundaryml/baml": "^0.78.0",
-    "@linear/sdk": "^37.0.0",
+    "@octokit/rest": "^21.1.1",
+    "@slack/web-api": "^7.8.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
     "@types/node-fetch": "^2.6.12",

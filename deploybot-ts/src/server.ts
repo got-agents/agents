@@ -1,168 +1,131 @@
+
 import express, { Express, Request, Response } from 'express'
 import bodyParser from 'body-parser'
+import {
+  b,
+} from './baml_client'
+import { HumanContact, FunctionCall } from 'humanlayer'
+import { EmailPayload, V1Beta2SlackEventReceived, V1Beta1AgentEmailReceived, V1Beta1HumanContactCompleted, V1Beta1FunctionCallCompleted } from './vendored'
+import { Thread } from './agent'
+import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
-import { listGitCommits, triggerWorkflowDispatch } from './tools/github'
-import { slack } from './tools/slack'
-import axios from 'axios'
 
 const debug: boolean = !!process.env.DEBUG
 const debugDisableWebhookVerification: boolean = process.env.DEBUG_DISABLE_WEBHOOK_VERIFICATION === 'true'
 
+const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
+
 const app: Express = express()
 const port = process.env.PORT || 8000
 
-// Store processed message IDs to prevent duplicates
-const processedMessages = new Set<string>();
-
-// Get HumanLayer API key from environment
-const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME 
-  ? process.env[process.env.HUMANLAYER_API_KEY_NAME] 
-  : process.env.HUMANLAYER_API_KEY;
-
-if (!HUMANLAYER_API_KEY) {
-  throw new Error('HUMANLAYER_API_KEY or HUMANLAYER_API_KEY_NAME environment variable must be set');
+const getAllowedEmails = (): Set<string> => {
+  const allowedEmails = process.env.ALLOWED_SOURCE_EMAILS || ''
+  return new Set(
+    allowedEmails
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean),
+  )
 }
 
-// Function to create HumanLayer function call
-async function createHumanLayerFunctionCall(spec: any) {
-  try {
-    const response = await axios.post(
-      'https://api.dev.humanlayer.dev/humanlayer/v1/function_calls',
+const getTargetEmails = (): Set<string> => {
+  const targetEmails = process.env.ALLOWED_TARGET_EMAILS || ''
+  return new Set(
+    targetEmails
+      .split(',')
+      .map(email => email.trim())
+      .filter(Boolean),
+  )
+}
+
+const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
+  console.log(`new slack thread received: ${JSON.stringify(payload)}`)
+
+  // todo validate allowed users/channels like we do for emails
+
+  const thread: Thread = {
+    initial_slack_message: payload.event,
+    events: [
       {
-        run_id: "deploybot",
-        call_id: `deploy-${Date.now()}`,
-        spec
+        type: 'slack_message_received',
+        data: stringifyToYaml(payload),
       },
-      {
-        headers: {
-          'Authorization': `Bearer ${HUMANLAYER_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error creating HumanLayer function call:', error);
-    throw error;
+    ],
+  }
+  Promise.resolve().then(async () => {
+    await handleNextStep(thread)
+  })
+  res.json({ status: 'ok' })
+}
+
+const callCompletedHandler = async (
+  payload: V1Beta1HumanContactCompleted | V1Beta1FunctionCallCompleted,
+  res: Response,
+) => {
+  const humanResponse: FunctionCall | HumanContact = payload.event
+
+  if (debug) {
+    console.log(`${JSON.stringify(humanResponse)}`)
+  }
+
+  if (!humanResponse.spec.state) {
+    console.error('received human response without state')
+    res.status(400)
+    res.json({ status: 'error', error: 'state is required' })
+    return
+  }
+
+  // Return immediately
+  res.json({ status: 'ok' })
+
+  // Process asynchronously
+  Promise.resolve().then(async () => {
+    try {
+      let thread: Thread
+      thread = humanResponse.spec.state as Thread
+      console.log(`human_response received: ${JSON.stringify(humanResponse)}`)
+      await handleHumanResponse(thread, payload)
+    } catch (e) {
+      console.error('Error processing human response:', e)
+    }
+  })
+}
+
+const webhookHandler = (req: Request, res: Response) => {
+  if (!debugDisableWebhookVerification && !verifyWebhook(req, res)) {
+    return
+  }
+
+  const payload = JSON.parse(req.body) as WebhookPayload
+  console.log(`event type: ${payload.type}`)
+
+  switch (payload.type) {
+    case 'agent_email.received':
+      return newEmailThreadHandler(payload, res)
+    case 'agent_slack.received':
+      return newSlackThreadHandler(payload, res)
+    case 'human_contact.completed':
+      return callCompletedHandler(payload, res)
+    case 'function_call.completed':
+      return callCompletedHandler(payload, res)
   }
 }
 
-// Handle Slack events
-const handleSlackEvent = async (req: Request, res: Response) => {
-  const body = req.body;
-  
-  // Handle Slack URL verification
-  if (body.type === 'url_verification') {
-    return res.json({ challenge: body.challenge });
-  }
-
-  // Only process message events with text
-  if (body.event?.type !== 'message' || !body.event?.text) {
-    return res.json({ status: 'ok' });
-  }
-
-  const messageId = `${body.event.channel}-${body.event.ts}`;
-  
-  // Prevent duplicate processing
-  if (processedMessages.has(messageId)) {
-    return res.json({ status: 'ok' });
-  }
-  processedMessages.add(messageId);
-
-  // Only process messages containing "deploy prod"
-  if (!body.event.text.toLowerCase().includes('deploy prod')) {
-    return res.json({ status: 'ok' });
-  }
-
-  try {
-    // Get latest commit
-    const commits = await listGitCommits(1);
-    const latestCommit = commits[0];
-
-    if (!latestCommit) {
-      await slack.chat.postMessage({
-        channel: body.event.channel,
-        thread_ts: body.event.thread_ts || body.event.ts,
-        text: "❌ No commits found to deploy."
-      });
-      return res.json({ status: 'ok' });
-    }
-
-    // Create deployment request via HumanLayer API
-    await createHumanLayerFunctionCall({
-      fn: 'deploy_to_prod',
-      kwargs: {
-        tag: `v${new Date().toISOString().split('T')[0]}`,
-        commit: {
-          sha: latestCommit.sha,
-          message: latestCommit.message,
-          author: latestCommit.author
-        }
-      }
-    });
-
-    // Send confirmation that request was created
-    await slack.chat.postMessage({
-      channel: body.event.channel,
-      thread_ts: body.event.thread_ts || body.event.ts,
-      text: "🚀 Deployment request created. Please check the deployment channel for approval."
-    });
-
-  } catch (error: any) {
-    console.error('Error handling deployment request:', error);
-    await slack.chat.postMessage({
-      channel: body.event.channel,
-      thread_ts: body.event.thread_ts || body.event.ts,
-      text: `❌ Error: ${error.message}`
-    });
-  }
-
-  res.json({ status: 'ok' });
-};
-
-// Handle HumanLayer webhook responses
-const handleHumanLayerWebhook = async (req: Request, res: Response) => {
-  const payload = req.body;
-
-  try {
-    // Only process function call completions
-    if (payload.type === 'function_call.completed') {
-      const functionCall = payload.event;
-      
-      if (functionCall.status?.approved) {
-        const { tag, commit } = functionCall.spec.kwargs;
-        console.log('tag', tag)
-        console.log('commit', commit)
-        // Trigger GitHub workflow
-        await triggerWorkflowDispatch(
-          'tag-and-push-prod.yaml',
-          'main',
-          {
-            type: 'patch',
-            semantic_version: tag,
-            triggered_by: 'deploybot',
-            environment: "staging"
-          }
-        );
-
-        console.log(`Deployment workflow triggered for tag ${tag} from commit ${commit.sha}`);
-      }
-    }
-
-    res.json({ status: 'ok' });
-  } catch (error: any) {
-    console.error('Error processing HumanLayer webhook:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Routes
-app.post('/webhook/generic', bodyParser.json(), handleSlackEvent);
-app.post('/webhook/inbound', bodyParser.json(), handleHumanLayerWebhook);
+app.post('/webhook/generic', bodyParser.raw({ type: 'application/json' }), webhookHandler)
+app.post('/webhook/new-email-thread', bodyParser.raw({ type: 'application/json' }), webhookHandler)
+app.post(
+  '/webhook/human-response-on-existing-thread',
+  bodyParser.raw({ type: 'application/json' }),
+  webhookHandler,
+)
 
 // Basic health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
-  res.json({ status: 'ok' })
+  const nextStep = await b.DetermineNextStep(
+    '<inbound_slack>do we have any commits that need to be deployed?</inbound_slack>',
+  )
+  res.json({ status: 'ok', nextStep})
+
 })
 
 app.get('/', async (req: Request, res: Response) => {
@@ -179,6 +142,87 @@ app.use((req: Request, res: Response) => {
   })
 })
 
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'DeployBot Assistant is running',
+  })
+})
+
+
+type WebhookPayload = V1Beta1AgentEmailReceived | V1Beta2SlackEventReceived | V1Beta1HumanContactCompleted | V1Beta1FunctionCallCompleted
+
+const newEmailThreadHandler = async (payload: V1Beta1AgentEmailReceived, res: Response) => {
+  if (payload.is_test || payload.event.from_address === 'overworked-admin@coolcompany.com') {
+    console.log('test email received, skipping')
+    res.json({ status: 'ok', intent: 'test' })
+    return
+  }
+
+  // Check if email is in "Name <email>" format and extract just the email
+  let fromAddress = payload.event.from_address
+  const emailMatch = fromAddress.match(/<(.+?)>/)
+  if (emailMatch) {
+    fromAddress = emailMatch[1]
+  }
+
+  // Extract target email from to_address
+  let toAddress = payload.event.to_address
+  const toEmailMatch = toAddress.match(/<(.+?)>/)
+  if (toEmailMatch) {
+    toAddress = toEmailMatch[1]
+  }
+
+  const allowedEmails = getAllowedEmails()
+  const targetEmails = getTargetEmails()
+  console.log(`allowedEmails: ${Array.from(allowedEmails).join(',')}`)
+  console.log(`targetEmails: ${Array.from(targetEmails).join(',')}`)
+
+  // Check if sender is allowed (if allowlist is configured)
+  if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
+    console.log(
+      `email from non-allowed sender ${payload.event.from_address} (parsed as ${fromAddress}), skipping`,
+    )
+    res.json({ status: 'ok', intent: 'meh' })
+    return
+  }
+
+  // Check if target email is allowed (if target list is configured)
+  if (targetEmails.size > 0 && !targetEmails.has(toAddress)) {
+    console.log(
+      `email to non-target address ${payload.event.to_address} (parsed as ${toAddress}), skipping`,
+    )
+    res.json({ status: 'ok', intent: 'meh' })
+    return
+  }
+
+  console.log(`new email received from ${payload.event.from_address} to ${payload.event.to_address}`)
+
+  // Return immediately
+  res.json({ status: 'ok' })
+
+  // Process asynchronously
+  Promise.resolve().then(async () => {
+    const body: EmailPayload = payload.event
+    let thread: Thread = {
+      initial_email: body,
+      events: [
+        {
+          type: 'email_received',
+          data: body,
+        },
+      ],
+    }
+
+    // prefill context always, don't waste tool call round trips
+    try {
+      await handleNextStep(thread)
+    } catch (e) {
+      console.error('Error processing new email thread:', e)
+    }
+  })
+}
+
 // Add after other env var checks
 const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET
 if (!webhookSecret) {
@@ -188,14 +232,40 @@ if (!webhookSecret) {
 
 const wh = new Webhook(webhookSecret)
 
-// Start server
+const verifyWebhook = (req: Request, res: Response): boolean => {
+  const payload = req.body
+  const headers = req.headers
+
+  // Verify the webhook signature
+  try {
+    wh.verify(payload, {
+      'svix-id': headers['svix-id'] as string,
+      'svix-timestamp': headers['svix-timestamp'] as string,
+      'svix-signature': headers['svix-signature'] as string,
+    })
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err)
+    res.status(400).json({ error: 'Invalid webhook signature' })
+    return false
+  }
+  return true
+}
 export async function serve() {
-  app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-  });
+  app.listen(port, async () => {
+    const apiBase = process.env.HUMANLAYER_API_BASE || 'http://host.docker.internal:8080/humanlayer/v1'
+    console.log(`humanlayer api base: ${apiBase}`)
+
+  console.log(`fetching project from ${apiBase}/project using ${process.env.HUMANLAYER_API_KEY_NAME}`)
+
+  const project = await fetch(`${apiBase}/project`, {
+    headers: {
+      Authorization: `Bearer ${HUMANLAYER_API_KEY}`,
+    },
+  })
+  console.log(await project.json())
+
+  console.log(`Server running at http://localhost:${port}`)
+  })
 }
 
-// Call serve() if this file is run directly
-if (require.main === module) {
-  serve().catch(console.error);
-}
+

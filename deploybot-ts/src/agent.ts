@@ -8,18 +8,20 @@ import {
   IntentPushGitTag,
   IntentListVercelDeployments,
   IntentPromoteVercelDeployment,
+  NothingToDo,
 } from './baml_client'
 
 import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
-import { listVercelDeployments } from './tools/vercel'
+import { vercelClient } from './tools/vercel'
+import { triggerWorkflowDispatch } from './tools/github'
 
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
 
 // Events and Threads
 export interface Event {
   type: string;
-  data: EmailPayload | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string;
+  data: EmailPayload | NothingToDo | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string;
 }
 
 export interface Thread {
@@ -139,7 +141,8 @@ const _handleNextStep = async (
     | IntentListGitTags
     | IntentPushGitTag
     | IntentListVercelDeployments
-    | IntentPromoteVercelDeployment,
+    | IntentPromoteVercelDeployment
+    | NothingToDo,
   hl: HumanLayer,
 ): Promise<Thread | false> => {
   thread.events.push({
@@ -174,6 +177,24 @@ const _handleNextStep = async (
       })
       console.log(`thread sent to humanlayer`)
       return false
+    case 'nothing_to_do':
+      thread.events.push({
+        type: 'nothing_to_do',
+        data: nextStep,
+      })
+
+      console.log(`NOTHING TO DO - ${nextStep.message}`)
+
+      if (process.env.DEBUG_CONTACT_HUMAN_ON_NOTHING_TO_DO) {
+        await hl.createHumanContact({
+          spec: {
+            msg: `NOTHING TO DO - ${nextStep.message}`,
+            state: thread,
+          }
+        })
+      }
+
+      return false
     case 'list_git_commits':
       return await appendResult(thread, async () => {
         return 'fetching commits is not supported yet'
@@ -188,16 +209,23 @@ const _handleNextStep = async (
       })
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
-        // TODO - claude wrote this and IDK if its correct
-        const deployments = await listVercelDeployments();
-        return deployments;
+        return vercelClient().getRecentDeployments()
       })
     case 'promote_vercel_deployment':
-      return await appendResult(thread, async () => {
-        // this should probably come from a github action, not direct interface
-        // with the vercel api
-        return 'promoting deployments is not supported yet'
+      await appendResult(thread, async () => {
+        await hl.createFunctionCall({
+          spec: {
+            fn: 'promote_vercel_deployment',
+            kwargs: {
+              deployment: nextStep.vercel_deployment.markdown,
+              previous_deployment: nextStep.previous_deployment.markdown,
+            },
+            state: thread,
+          },
+        })
+
       })
+      return false
     default:
       thread.events.push({
         type: 'error',
@@ -222,6 +250,7 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
       channel_or_user_id: thread.initial_slack_message?.channel_id || "",
       // todo support replying in a thread
       // thread_ts: thread.initial_slack_message?.thread_ts || "",
+      experimental_slack_blocks: true,
     }
   }
 
@@ -273,8 +302,19 @@ export const handleHumanResponse = async (
       return await handleNextStep(thread)
     } else if (functionCall.spec.fn === 'promote_vercel_deployment') {
       // promote_vercel_deployment approved, promote the deployment
+      
       thread = await appendResult(thread, async () => {
-        return 'promoting deployments is not supported yet'
+        console.log(`promoting vercel deployment: ${functionCall.spec.kwargs.vercel_deployment}`)
+        console.log(`previous deployment: ${functionCall.spec.kwargs.previous_deployment}`)
+        const resp = await triggerWorkflowDispatch(
+          'vercel-promote-to-prod.yaml',
+          'main',
+          {
+            'vercel_deployment_id': functionCall.spec.kwargs.vercel_deployment.deployment_id,
+            // git_commit_sha: nextStep.vercel_deployment.git_commit_sha,
+          })
+        console.log(`resp: ${resp}`)
+        return resp
       })
       return await handleNextStep(thread)
     } else if (functionCall.spec.fn === 'push_git_tag') {

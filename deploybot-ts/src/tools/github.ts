@@ -213,8 +213,8 @@ export async function triggerWorkflowDispatch(
 ) {
   try {
     // Validate workflow ID to prevent accidental triggers
-    if (workflowId !== 'tag-and-push-prod.yaml') {
-      throw new Error('Invalid workflow ID - only tag-and-push-prod.yaml is allowed');
+    if (workflowId !== 'promote-latest-vercel-staged-build-to-prod' && workflowId !== 'tag-push-prod') {
+      throw new Error('Invalid workflow ID - only promote-latest-vercel-staged-build-to-prod and tag-push-prod are allowed');
     }
 
     // Validate ref to ensure we only deploy from main
@@ -229,8 +229,6 @@ export async function triggerWorkflowDispatch(
       ref,
       inputs: {
         ...inputs,
-        triggered_by: 'deploybot',
-        environment: 'production'
       }
     });
   } catch (error) {
