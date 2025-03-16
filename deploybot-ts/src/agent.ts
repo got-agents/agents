@@ -5,17 +5,18 @@ import {
   DoneForNow,
   IntentListGitCommits,
   IntentListGitTags,
-  IntentPushGitTag,
+  IntentTagPushProd,
   IntentListVercelDeployments,
   IntentPromoteVercelDeployment,
   NothingToDo,
+  Await,
 } from './baml_client'
-
+import Redis from 'ioredis'
 import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
 import { vercelClient } from './tools/vercel'
-import { triggerWorkflowDispatch } from './tools/github'
-
+import { listGitCommits, listGitTags, triggerWorkflowDispatch } from './tools/github'
+import { saveThreadState, getThreadState } from './state'
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
 
 // Events and Threads
@@ -36,25 +37,25 @@ export interface HumanResponse {
 }
 
 export function stringifyToYaml(obj: any): string {
-  // Custom replacer function to ignore functions
+  if (!obj) {
+    return 'undefined'
+  }
+
   const replacer = (key: string, value: any) => {
     if (typeof value === 'function') {
-      return undefined // Ignore functions
+      return undefined
     }
     return value
   }
 
-  // Convert object to a plain JavaScript object, ignoring functions
   const plainObj = JSON.parse(JSON.stringify(obj, replacer))
 
-  // Convert to YAML
   return yaml.dump(plainObj, {
-    skipInvalid: true, // Skip invalid YAML elements
-    noRefs: true, // Don't output YAML references
+    skipInvalid: true,
+    noRefs: true,
   })
 }
 
-// accumulators are one honking great idea
 const eventToPrompt = (event: Event) => {
   switch (event.type) {
     case 'email_received':
@@ -80,23 +81,13 @@ const threadToPrompt = (thread: Thread) => {
   return thread.events.map(eventToPrompt).join('\n\n')
 }
 
-const lastEventToResultType: Record<string, Event['type']> = {
-  list_git_commits: 'list_git_commits_result',
-  list_git_tags: 'list_git_tags_result',
-  push_git_tag: 'push_git_tag_result',
-  list_vercel_deployments: 'list_vercel_deployments_result',
-  promote_vercel_deployment: 'promote_vercel_deployment_result',
-  error: 'error',
-}
-
-// Modify appendResult function to track cache stats
 const appendResult = async (
   thread: Thread,
   fn: () => Promise<any>,
   cacheKey?: string,
 ): Promise<Thread> => {
   const lastEvent: Event = thread.events.slice(-1)[0]
-  const responseType: Event['type'] = lastEventToResultType[lastEvent.type]
+  const responseType: string = lastEvent.type + '_result'
   if (!responseType) {
     thread.events.push({
       type: 'error',
@@ -106,7 +97,6 @@ const appendResult = async (
   }
   try {
     const result = await fn()
-    // const squashedEvent = await b.SquashResponseContext(threadToPrompt(thread), stringifyToYaml(result))
     thread.events.push({
       type: responseType,
       data: result,
@@ -125,13 +115,6 @@ const appendResult = async (
   return thread
 }
 
-/**
- * return whether the outer thread should continue
- * @param thread
- * @param nextStep
- * @param hl
- * @returns
- */
 const _handleNextStep = async (
   thread: Thread,
   nextStep:
@@ -139,16 +122,18 @@ const _handleNextStep = async (
     | DoneForNow
     | IntentListGitCommits
     | IntentListGitTags
-    | IntentPushGitTag
+    | IntentTagPushProd
     | IntentListVercelDeployments
     | IntentPromoteVercelDeployment
-    | NothingToDo,
+    | NothingToDo
+    | Await,
   hl: HumanLayer,
 ): Promise<Thread | false> => {
   thread.events.push({
     type: nextStep.intent,
     data: nextStep,
   })
+  let stateId: string | null = null
   switch (nextStep.intent) {
     case 'done_for_now':
       thread.events.push({
@@ -156,10 +141,12 @@ const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: { stateId },
         },
       })
       return false
@@ -169,10 +156,12 @@ const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: { stateId },
         },
       })
       console.log(`thread sent to humanlayer`)
@@ -183,48 +172,71 @@ const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       console.log(`NOTHING TO DO - ${nextStep.message}`)
 
       if (process.env.DEBUG_CONTACT_HUMAN_ON_NOTHING_TO_DO) {
         await hl.createHumanContact({
           spec: {
             msg: `NOTHING TO DO - ${nextStep.message}`,
-            state: thread,
+            state: { stateId },
           }
         })
       }
 
       return false
+    case 'await':
+      thread.events.push({
+        type: 'await',
+        data: nextStep,
+      })
+      // todo we should have a tool to do this safely :slight_smile:
+      console.log(`awaiting ${nextStep.seconds} seconds, reasoning: ${nextStep.reasoning}`)
+      return await appendResult(thread, async () => {
+        await new Promise(resolve => setTimeout(resolve, nextStep.seconds * 1000))
+        return {
+          status: `successfully waited ${nextStep.seconds} seconds`,
+        }
+      })
     case 'list_git_commits':
       return await appendResult(thread, async () => {
-        return 'fetching commits is not supported yet'
+        return listGitCommits({limit: nextStep.limit || 20})
       })
     case 'list_git_tags':
       return await appendResult(thread, async () => {
-        return 'fetching tags is not supported yet'
+        return listGitTags({limit: nextStep.limit || 20})
       })
-    case 'push_git_tag':
-      return await appendResult(thread, async () => {
-        return 'pushing tags is not supported yet'
+    case 'tag_push_prod':
+      stateId = await saveThreadState(thread)
+      await hl.createFunctionCall({
+        spec: {
+          fn: 'tag_push_prod',
+          kwargs: {
+            sha_to_deploy: nextStep.new_commit.sha,
+            new_commit: nextStep.new_commit.markdown,
+            previous_commit: nextStep.previous_commit.markdown,
+          },
+          state: { stateId },
+        },
       })
+      return false
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
         return vercelClient().getRecentDeployments()
       })
     case 'promote_vercel_deployment':
-      await appendResult(thread, async () => {
-        await hl.createFunctionCall({
-          spec: {
-            fn: 'promote_vercel_deployment',
+      stateId = await saveThreadState(thread)
+      await hl.createFunctionCall({
+        spec: {
+          fn: 'promote_vercel_deployment',
             kwargs: {
               new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
               new_deployment: nextStep.vercel_deployment.markdown,
               previous_deployment: nextStep.previous_deployment.markdown,
             },
-            state: thread,
-          },
-        })
-
+          state: { stateId },
+        },
       })
       return false
     default:
@@ -236,7 +248,7 @@ const _handleNextStep = async (
   }
 }
 
-// just keep folding
+
 export const handleNextStep = async (thread: Thread): Promise<void> => {
   console.log(`thread: ${JSON.stringify(thread)}`)
 
@@ -249,8 +261,6 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
   } : {
     slack: {
       channel_or_user_id: thread.initial_slack_message?.channel_id || "",
-      // todo support replying in a thread
-      // thread_ts: thread.initial_slack_message?.thread_ts || "",
       experimental_slack_blocks: true,
     }
   }
@@ -280,8 +290,8 @@ export const handleHumanResponse = async (
   payload: V1Beta1HumanContactCompleted | V1Beta1FunctionCallCompleted,
 ): Promise<void> => {
   const humanResponse = payload.event
+
   if (payload.type === 'human_contact.completed') {
-    // its a human contact, append the human response to the thread
     const humanContact = humanResponse as HumanContact
     thread.events.push({
       type: 'human_response',
@@ -289,48 +299,51 @@ export const handleHumanResponse = async (
     })
     return await handleNextStep(thread)
   } else if (payload.type === 'function_call.completed') {
-    // its a function call
     const functionCall = humanResponse as FunctionCall
-    // check if it was approved
+    const stateId = (functionCall.spec.state as any).stateId
+    let currentThread = stateId ? await getThreadState(stateId) : null
+    if (!currentThread) {
+      currentThread = thread
+    }
+
     if (!functionCall.status?.approved) {
-      // denied? push the feedback to the thread and let the llm continue
-      thread.events.push({
+      currentThread.events.push({
         type: 'human_response',
         data: `User denied ${functionCall.spec.fn} with feedback: ${
           functionCall.status?.comment || '(No comment provided)'
         }`,
       })
-      return await handleNextStep(thread)
+      return await handleNextStep(currentThread)
     } else if (functionCall.spec.fn === 'promote_vercel_deployment') {
-      // promote_vercel_deployment approved, promote the deployment
-      
-      thread = await appendResult(thread, async () => {
+      const updatedThread = await appendResult(currentThread, async () => {
         console.log(`promoting vercel deployment: ${functionCall.spec.kwargs.new_deployment}`)
         console.log(`previous deployment: ${functionCall.spec.kwargs.previous_deployment}`)
         const resp = await triggerWorkflowDispatch(
           'vercel-promote-to-prod.yaml',
           'main',
           {
-            'vercel_deployment_id': functionCall.spec.kwargs.new_deployment_sha,
-            // git_commit_sha: nextStep.vercel_deployment.git_commit_sha,
+            'git_sha': functionCall.spec.kwargs.new_deployment_sha,
           })
         console.log(`resp: ${resp}`)
         return resp
       })
-      return await handleNextStep(thread)
-    } else if (functionCall.spec.fn === 'push_git_tag') {
-      // push_git_tag approved, push the tag and tell the llm what happened
-      thread = await appendResult(thread, async () => {
-        return 'pushing tags is not supported yet'
+      return await handleNextStep(updatedThread)
+    } else if (functionCall.spec.fn === 'tag_push_prod') {
+      const updatedThread = await appendResult(currentThread, async () => {
+        console.log(`tagging and pushing to prod: ${functionCall.spec.kwargs.new_commit}`)
+        console.log(`previous commit: ${functionCall.spec.kwargs.previous_commit}`)
+        const resp = await triggerWorkflowDispatch(
+          'tag-and-push-prod.yaml',
+          'main',
+        )
       })
-      return await handleNextStep(thread)
+      return await handleNextStep(updatedThread)
     } else {
-      // unknown function name, push an error to the thread and let the llm continue
-      thread.events.push({
+      currentThread.events.push({
         type: 'error',
         data: `Unknown intent: ${functionCall.spec.fn}`,
       })
-      return await handleNextStep(thread)
+      return await handleNextStep(currentThread)
     }
   }
 

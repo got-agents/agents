@@ -87,7 +87,7 @@ export function verifyGitHubWebhook(payload: string, signature: string): boolean
  * @param limit Number of commits to fetch (default: 1)
  * @returns Array of GitCommit objects
  */
-export async function listGitCommits(limit: number = 1): Promise<GitCommit[]> {
+export async function listGitCommitsExtended(limit: number = 1): Promise<GitCommit[]> {
   try {
     console.log(`Fetching latest commit from ${owner}/${repo} default branch...`);
     
@@ -148,58 +148,46 @@ export async function listGitCommits(limit: number = 1): Promise<GitCommit[]> {
   }
 }
 
+export async function listGitCommits({limit}: {limit: number} = {limit: 10}): Promise<GitCommit[]> {
+  const commits = await octokit.repos.listCommits({
+    owner,
+    repo,
+    per_page: limit,
+  });
+  return commits.data.map((commit: any) => ({
+    author: commit.author?.login || 'unknown',
+    date: commit.commit?.author?.date || new Date().toISOString(),
+    message: commit.commit?.message || '',
+    sha: commit.sha || '',
+    url: commit.html_url || '',
+    tags: []
+  }));
+}
+
 /**
  * List all tags from the repository
  * @returns Array of tag objects
  */
-export async function listGitTags() {
+export async function listGitTags({limit}: {limit: number} = {limit: 20}): Promise<any> {
   try {
     const response = await octokit.repos.listTags({
       owner,
       repo,
+      per_page: limit,
     });
 
-    return response.data;
+    return response.data.map((tag: any) => ({
+      name: tag.name,
+      commit_sha: tag.commit.sha,
+      commit_url: tag.commit.url
+    }));
+
+
   } catch (error) {
     console.error('Error fetching git tags:', error);
     throw error;
   }
 }
-
-/**
- * Create a new tag in the repository
- * @param tagName Name of the tag to create
- * @param sha Commit SHA to tag
- * @param message Tag message
- * @returns Created tag object
- */
-export async function createGitTag(tagName: string, sha: string, message: string) {
-  try {
-    // First create the tag object
-    const tagResponse = await octokit.git.createTag({
-      owner,
-      repo,
-      tag: tagName,
-      message,
-      object: sha,
-      type: 'commit',
-    });
-
-    // Then create the reference to make the tag visible
-    await octokit.git.createRef({
-      owner,
-      repo,
-      ref: `refs/tags/${tagName}`,
-      sha: tagResponse.data.sha,
-    });
-
-    return tagResponse.data;
-  } catch (error) {
-    console.error('Error creating git tag:', error);
-    throw error;
-  }
-}
-
 /**
  * Trigger a workflow dispatch event
  * @param workflowId The workflow file name or ID
@@ -213,8 +201,8 @@ export async function triggerWorkflowDispatch(
 ) {
   try {
     // Validate workflow ID to prevent accidental triggers
-    if (workflowId !== 'promote-latest-vercel-staged-build-to-prod' && workflowId !== 'tag-push-prod') {
-      throw new Error('Invalid workflow ID - only promote-latest-vercel-staged-build-to-prod and tag-push-prod are allowed');
+    if (workflowId !== 'tag-and-push-prod.yaml' && workflowId !== 'vercel-promote-to-prod.yaml') {
+      throw new Error('Invalid workflow ID - only tag-and-push-prod.yaml and vercel-promote-to-prod.yaml are allowed');
     }
 
     // Validate ref to ensure we only deploy from main
@@ -222,7 +210,7 @@ export async function triggerWorkflowDispatch(
       throw new Error('Invalid ref - can only deploy from main branch');
     }
 
-    await octokit.actions.createWorkflowDispatch({
+    const resp = await octokit.actions.createWorkflowDispatch({
       owner,
       repo,
       workflow_id: workflowId,
@@ -231,6 +219,43 @@ export async function triggerWorkflowDispatch(
         ...inputs,
       }
     });
+
+    if (!resp.status || resp.status !== 204) {
+      throw new Error(`Failed to trigger workflow dispatch: ${resp.status}: ${resp.data}`);
+    }
+
+    // wait up to 10 seconds for the workflow to start
+    await new Promise(resolve => setTimeout(resolve, 10000));
+
+    // Get recent workflow runs for this workflow to find the triggered one
+    const runs = await octokit.actions.listWorkflowRuns({
+      owner,
+      repo,
+      workflow_id: workflowId,
+      per_page: 5, // Limit to recent runs
+    });
+
+    // Return any active runs
+    return {
+      recent_runs: runs.data.workflow_runs.map(run => {
+        return {
+          id: run.id,
+          name: run.name,
+          status: run.status,
+          conclusion: run.conclusion,
+          html_url: run.html_url,
+          created_at: run.created_at,
+          updated_at: run.updated_at,
+          head_sha: run.head_sha,
+          head_commit: {
+            message: run.head_commit?.message,
+            author: run.head_commit?.author?.name,
+            timestamp: run.head_commit?.timestamp
+          }
+        };
+      }),
+    }
+
   } catch (error) {
     console.error('Error triggering workflow dispatch:', error);
     throw error;

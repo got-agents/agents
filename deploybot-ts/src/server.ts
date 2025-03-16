@@ -1,4 +1,3 @@
-
 import express, { Express, Request, Response } from 'express'
 import bodyParser from 'body-parser'
 import {
@@ -9,11 +8,18 @@ import { EmailPayload, V1Beta2SlackEventReceived, V1Beta1AgentEmailReceived, V1B
 import { Thread } from './agent'
 import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
-
+import Redis from 'ioredis'
+import { getThreadState } from './state'
 const debug: boolean = !!process.env.DEBUG
 const debugDisableWebhookVerification: boolean = process.env.DEBUG_DISABLE_WEBHOOK_VERIFICATION === 'true'
 
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
+
+const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
+
+redis.on('error', err => {
+  console.error('Redis connection error:', err)
+})
 
 const app: Express = express()
 const port = process.env.PORT || 8000
@@ -82,7 +88,17 @@ const callCompletedHandler = async (
   Promise.resolve().then(async () => {
     try {
       let thread: Thread
-      thread = humanResponse.spec.state as Thread
+      if (humanResponse.spec.state && 'stateId' in humanResponse.spec.state) {
+        const stateId = (humanResponse.spec.state as { stateId: string }).stateId
+        const loadedThread = await getThreadState(stateId)
+        if (!loadedThread) {
+          console.error(`Could not find thread state for ${stateId}`)
+          return
+        }
+        thread = loadedThread
+      } else {
+        thread = humanResponse.spec.state as Thread
+      }
       console.log(`human_response received: ${JSON.stringify(humanResponse)}`)
       await handleHumanResponse(thread, payload)
     } catch (e) {
