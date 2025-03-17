@@ -17,6 +17,7 @@ export type SlackMessage = {
 export type SlackThread = {
   thread_ts: string
   channel_id: string
+  team_id: string
   events: SlackMessage[]
 }
 

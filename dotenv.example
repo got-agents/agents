@@ -1,25 +1,53 @@
-# shared 
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
-HUMANLAYER_API_BASE=
+
+# local
+# HUMANLAYER_API_BASE=http://host.docker.internal:8080/humanlayer/v1
+# DEPLOYBOT_HUMANLAYER_API_KEY=
+
+# devcloud
+# HUMANLAYER_API_BASE=https://api.dev.humanlayer.dev/humanlayer/v1
+# DEPLOYBOT_HUMANLAYER_API_KEY=
+
+# prod
+HUMANLAYER_API_BASE=https://api.humanlayer.dev/humanlayer/v1
+DEPLOYBOT_HUMANLAYER_API_KEY=
+LINEAR_ASSISTANT_HUMANLAYER_API_KEY=
+
+
+# can skip these in local dev, webhook verification is disabled
+DEPLOYBOT_WEBHOOK_SIGNING_SECRET=
+LINEAR_ASSISTANT_WEBHOOK_SIGNING_SECRET=
+
+# optional, for baml observability
 BOUNDARY_PROJECT_ID=
 BOUNDARY_SECRET=
 
-WEBHOOK_SIGNING_SECRET= # todo make this splitable per agent, like humanlayer_api_key
+# to use with a whitelabeled slack app, you need to
+# navigate to /orgSlug/projectSlug/integrations/byo-slack 
+# and set an app ID and signing secret
+# navigate to localhost:8001/ and follow the URL to connect slack
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+SLACK_REDIRECT_URI=https://your-ngrok-url/slack/oauth/callback
 
-# linear assistant
-LINEAR_ASSISTANT_HUMANLAYER_API_KEY=
 
+# linear
 LINEAR_API_KEY=
 LOOPS_API_KEY=
 
-# DeployBot
-HUMANLAYER_API_KEY=
-GITHUB_TOKEN=
-GITHUB_OWNER=
-GITHUB_REPO=
 
+# DeployBot
+GITHUB_TOKEN=
+GITHUB_OWNER=metalytics-dev
+GITHUB_REPO=metalytics
+# unused for now
+# GITHUB_WEBHOOK_SECRET=changeme
+
+# i recommend this for local
+DEBUG_CONTACT_HUMAN_ON_NOTHING_TO_DO=true
+
+# get a token
 VERCEL_BEARER_TOKEN=
 VERCEL_PROJECT_ID=
 VERCEL_TEAM_ID=
-

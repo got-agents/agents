@@ -16,6 +16,8 @@ const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = process.env.LOOPS_API_KEY ? new LoopsClient(process.env.LOOPS_API_KEY) : undefined
 const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
 
+const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
+
 redis.on('error', err => {
   console.error('Redis connection error:', err)
 })
@@ -216,7 +218,7 @@ const callCompletedHandler = async (
   })
 }
 
-const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET
+const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET_NAME ? process.env[process.env.WEBHOOK_SIGNING_SECRET_NAME] : process.env.WEBHOOK_SIGNING_SECRET
 if (!webhookSecret) {
   console.error('WEBHOOK_SIGNING_SECRET environment variable is required')
   process.exit(1)
@@ -311,17 +313,18 @@ app.use((req: Request, res: Response) => {
 
 export async function serve() {
   app.listen(port, async () => {
-    const apiBase = process.env.HUMANLAYER_API_BASE || 'https://api.humanlayer.dev/humanlayer/v1'
+    const apiBase = process.env.HUMANLAYER_API_BASE || 'http://host.docker.internal:8080/humanlayer/v1'
     console.log(`humanlayer api base: ${apiBase}`)
 
-    console.log(`fetching project from ${apiBase}/project`)
-    const project = await fetch(`${apiBase}/project`, {
-      headers: {
-        Authorization: `Bearer ${process.env.HUMANLAYER_API_KEY}`,
-      },
-    })
-    console.log(await project.json())
+  console.log(`fetching project from ${apiBase}/project using ${process.env.HUMANLAYER_API_KEY_NAME}`)
 
-    console.log(`Server running at http://localhost:${port}`)
+  const project = await fetch(`${apiBase}/project`, {
+    headers: {
+      Authorization: `Bearer ${HUMANLAYER_API_KEY}`,
+    },
+  })
+  console.log(await project.json())
+
+  console.log(`Server running at http://localhost:${port}`)
   })
 }
