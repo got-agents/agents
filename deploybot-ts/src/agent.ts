@@ -1,4 +1,4 @@
-import { FunctionCall, HumanContact, humanlayer, HumanLayer } from 'humanlayer'
+import { ContactChannel, FunctionCall, HumanContact, humanlayer, HumanLayer } from 'humanlayer'
 import {
   b,
   ClarificationRequest,
@@ -17,7 +17,7 @@ import * as yaml from 'js-yaml'
 import { V1Beta1FunctionCallCompleted, V1Beta1HumanContactCompleted, EmailPayload, SlackThread } from './vendored'
 import { vercelClient } from './tools/vercel'
 import { listGitCommits, listGithubWorkflows as listGithubWorkflowRuns, listGitTags, triggerWorkflowDispatch } from './tools/github'
-import { saveThreadState, getThreadState } from './state'
+import { saveThreadState, getThreadState, getSlackTokenForTeam } from './state'
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
 
 // Events and Threads
@@ -254,21 +254,34 @@ const _handleNextStep = async (
 export const handleNextStep = async (thread: Thread): Promise<void> => {
   console.log(`thread: ${JSON.stringify(thread)}`)
 
-  const contactChannel = thread.initial_email ? {
-    email: {
-      address: thread.initial_email.from_address,
-      subject: thread.initial_email.subject,
-      body: thread.initial_email.body,
+  let contactChannel: ContactChannel | null = null
+
+  if (thread.initial_slack_message) {
+    const teamId = thread.initial_slack_message.team_id
+    console.log('Looking up token for team:', teamId)
+    
+    const slackBotToken = await getSlackTokenForTeam(teamId)
+    
+    contactChannel = {
+      slack: {
+        channel_or_user_id: thread.initial_slack_message?.channel_id || "",
+        experimental_slack_blocks: true,
+        bot_token: slackBotToken || undefined,
+      }
     }
-  } : {
-    slack: {
-      channel_or_user_id: thread.initial_slack_message?.channel_id || "",
-      experimental_slack_blocks: true,
+  } else if (thread.initial_email) {
+    contactChannel = {
+      email: {
+        address: thread.initial_email.from_address,
+        experimental_subject_line: thread.initial_email.subject,
+        experimental_in_reply_to_message_id: thread.initial_email.message_id,
+        experimental_references_message_id: thread.initial_email.message_id,
+      }
     }
   }
 
   console.log(`contactChannel: ${JSON.stringify(contactChannel)}`)
-  const hl = humanlayer({ contactChannel, apiKey: HUMANLAYER_API_KEY })
+  const hl = humanlayer({ contactChannel: contactChannel || undefined, apiKey: HUMANLAYER_API_KEY })
 
   let nextThread: Thread | false = thread
 
