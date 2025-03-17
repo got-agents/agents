@@ -10,6 +10,9 @@ import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
 import Redis from 'ioredis'
 import { getThreadState } from './state'
+import crypto from 'crypto'
+import { slack } from './tools/slack'
+
 const debug: boolean = !!process.env.DEBUG
 const debugDisableWebhookVerification: boolean = process.env.DEBUG_DISABLE_WEBHOOK_VERIFICATION === 'true'
 
@@ -47,7 +50,17 @@ const getTargetEmails = (): Set<string> => {
 const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
   console.log(`new slack thread received: ${JSON.stringify(payload)}`)
 
-  // todo validate allowed users/channels like we do for emails
+  // Get team ID and look up token
+  const teamId = payload.event.team_id
+  console.log('Looking up token for team:', teamId)
+  const tokenData = await redis.get(`slack_token:${teamId}`)
+  if (!tokenData) {
+    console.error(`No Slack token found for team ${teamId}`)
+    res.status(400).json({ error: 'Team not authorized' })
+    return
+  }
+  const { access_token } = JSON.parse(tokenData)
+  console.log('Found token for team:', teamId)
 
   const thread: Thread = {
     initial_slack_message: payload.event,
@@ -59,6 +72,15 @@ const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Re
     ],
   }
   Promise.resolve().then(async () => {
+    const contactChannel = {
+      slack: {
+        channel_or_user_id: thread.initial_slack_message?.channel_id || "",
+        experimental_slack_blocks: true,
+        slack_bot_token: access_token, // Pass the bot token to HumanLayer
+      }
+    }
+    console.log('Creating HumanLayer client with channel:', JSON.stringify(contactChannel))
+    const hl = humanlayer({ contactChannel, apiKey: HUMANLAYER_API_KEY })
     await handleNextStep(thread)
   })
   res.json({ status: 'ok' })
@@ -115,6 +137,26 @@ const webhookHandler = (req: Request, res: Response) => {
   const payload = JSON.parse(req.body) as WebhookPayload
   console.log(`event type: ${payload.type}`)
 
+  // Get team ID from payload
+  let teamId: string | undefined
+  if ('team_id' in payload.event) {
+    teamId = payload.event.team_id
+  } else if (payload.event.initial_slack_message?.team_id) {
+    teamId = payload.event.initial_slack_message.team_id
+  }
+
+  // Process webhook asynchronously
+  Promise.resolve().then(async () => {
+    if (teamId) {
+      const token = await getSlackToken(teamId)
+      if (token) {
+        // Create new WebClient instance with team's token
+        const teamSlack = new WebClient(token)
+        // TODO: Use teamSlack for any Slack API calls in the webhook handler
+      }
+    }
+  })
+
   switch (payload.type) {
     case 'agent_email.received':
       return newEmailThreadHandler(payload, res)
@@ -141,30 +183,163 @@ app.get('/health', async (req: Request, res: Response) => {
     '<inbound_slack>do we have any commits that need to be deployed?</inbound_slack>',
   )
   res.json({ status: 'ok', nextStep})
-
 })
 
 app.get('/', async (req: Request, res: Response) => {
   res.json({
     welcome: 'to the deploybot assistant',
     instructions: 'https://github.com/got-agents/agents',
+    slack: `${req.protocol}://${req.get('host')}/slack/connect`,
   })
 })
 
+// Slack OAuth routes - MUST be before the 404 handler
+app.get('/slack/connect', async (req: Request, res: Response) => {
+  if (!SLACK_CLIENT_ID) {
+    res.status(500).send('Slack client ID not configured')
+    return
+  }
+
+  const state = await generateOAuthState()
+  
+  // Full list of required scopes
+  const scopes = [
+    'app_mentions:read',
+    'users.profile:read',
+    'users:read',
+    'commands',
+    'channels:history',
+    'channels:read', 
+    'chat:write',
+    'groups:history',
+    'groups:write',
+    'im:history',
+    'im:read',
+    'im:write'
+  ]
+
+  // Redirect to Slack's OAuth page
+  const url = `https://slack.com/oauth/v2/authorize?client_id=${SLACK_CLIENT_ID}&scope=${scopes.join(',')}&redirect_uri=${SLACK_REDIRECT_URI}&state=${state}`
+  
+  res.redirect(url)
+})
+
+app.get('/slack/oauth/callback', async (req: Request, res: Response) => {
+  console.log('OAuth callback received:', {
+    code: !!req.query.code,
+    state: req.query.state,
+    error: req.query.error
+  })
+
+  const { code, state, error } = req.query
+
+  if (error) {
+    console.error('OAuth error from Slack:', error)
+    res.status(400).send(`Slack OAuth error: ${error}`)
+    return
+  }
+
+  if (!code || !state) {
+    console.error('Missing code or state:', { code: !!code, state: !!state })
+    res.status(400).send('Missing code or state parameter')
+    return
+  }
+
+  if (!await verifyOAuthState(state as string)) {
+    console.error('Invalid state parameter:', state)
+    res.status(400).send('Invalid state parameter')
+    return
+  }
+
+  try {
+    console.log('Exchanging code for token...')
+    // Exchange code for token
+    const result = await slack.oauth.v2.access({
+      client_id: SLACK_CLIENT_ID!,
+      client_secret: SLACK_CLIENT_SECRET!,
+      code: code as string,
+      redirect_uri: SLACK_REDIRECT_URI
+    })
+
+    if (!result.ok) {
+      console.error('Slack OAuth error:', result.error)
+      throw new Error(result.error)
+    }
+
+    console.log('Got successful OAuth response:', {
+      team_id: result.team?.id,
+      team_name: result.team?.name,
+      ok: result.ok
+    })
+
+    // Store tokens in Redis
+    const teamId = result.team?.id
+    if (!teamId) {
+      console.error('No team ID in OAuth response')
+      throw new Error('No team ID in OAuth response')
+    }
+
+    console.log('Storing token for team:', teamId)
+    const tokenData = JSON.stringify({
+      access_token: result.access_token,
+      team_id: teamId,
+      team_name: result.team?.name,
+      bot_user_id: result.bot_user_id,
+      installed_at: Date.now()
+    })
+    console.log('Token data to store:', {
+      team_id: teamId,
+      team_name: result.team?.name,
+      bot_user_id: result.bot_user_id,
+      installed_at: Date.now()
+    })
+
+    try {
+      await redis.set(`slack_token:${teamId}`, tokenData)
+      console.log('Token stored in Redis')
+
+      // Verify token was stored
+      const storedToken = await redis.get(`slack_token:${teamId}`)
+      console.log('Stored token verification:', {
+        found: !!storedToken,
+        matches: storedToken === tokenData
+      })
+
+      // List all keys
+      const allKeys = await redis.keys('*')
+      console.log('All Redis keys:', allKeys)
+
+    } catch (redisError) {
+      console.error('Redis error:', redisError)
+      throw redisError
+    }
+
+    res.redirect('/slack/oauth/success')
+  } catch (error) {
+    console.error('Slack OAuth error:', error)
+    res.status(500).send('Error completing Slack OAuth')
+  }
+})
+
+app.get('/slack/oauth/success', (req: Request, res: Response) => {
+  res.send(`
+    <html>
+      <body>
+        <h1>Success!</h1>
+        <p>The Slack app has been successfully installed.</p>
+        <p>You can close this window now.</p>
+      </body>
+    </html>
+  `)
+})
+
+// 404 handler - MUST be last
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     status: 'error',
     message: 'Not found',
   })
 })
-
-app.get('/', (req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'DeployBot Assistant is running',
-  })
-})
-
 
 type WebhookPayload = V1Beta1AgentEmailReceived | V1Beta2SlackEventReceived | V1Beta1HumanContactCompleted | V1Beta1FunctionCallCompleted
 
@@ -266,6 +441,37 @@ const verifyWebhook = (req: Request, res: Response): boolean => {
   }
   return true
 }
+
+const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID
+const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET
+const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI || 'http://localhost:8001/slack/oauth/callback'
+
+// Generate secure state parameter for OAuth
+async function generateOAuthState(): Promise<string> {
+  const state = crypto.randomBytes(32).toString('hex')
+  await redis.set(`slack_oauth_state:${state}`, '1', 'EX', 600) // Expire in 10 minutes
+  return state
+}
+
+// Verify OAuth state parameter
+async function verifyOAuthState(state: string): Promise<boolean> {
+  const exists = await redis.get(`slack_oauth_state:${state}`)
+  if (exists) {
+    await redis.del(`slack_oauth_state:${state}`)
+    return true
+  }
+  return false
+}
+
+// Add helper function to get token for a team
+async function getSlackToken(teamId: string): Promise<string | null> {
+  const tokenData = await redis.get(`slack_token:${teamId}`)
+  if (!tokenData) return null
+  
+  const data = JSON.parse(tokenData)
+  return data.access_token
+}
+
 export async function serve() {
   app.listen(port, async () => {
     const apiBase = process.env.HUMANLAYER_API_BASE || 'http://host.docker.internal:8080/humanlayer/v1'
@@ -283,5 +489,3 @@ export async function serve() {
   console.log(`Server running at http://localhost:${port}`)
   })
 }
-
-

@@ -1,13 +1,33 @@
 import { WebClient } from '@slack/web-api';
+import Redis from 'ioredis';
 
-const token = process.env.SLACK_BOT_TOKEN;
+const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1');
 const deploymentChannelId = process.env.SLACK_DEPLOYMENT_CHANNEL_ID;
 
-if (!token || !deploymentChannelId) {
-  throw new Error('SLACK_BOT_TOKEN and SLACK_DEPLOYMENT_CHANNEL_ID environment variables must be set');
+if (!deploymentChannelId) {
+  console.warn('SLACK_DEPLOYMENT_CHANNEL_ID not set - some Slack features will be disabled');
 }
 
-const slack = new WebClient(token);
+// Initialize with no token for OAuth flows
+export const slack = new WebClient();
+
+// Helper to get a team-specific Slack client
+async function getTeamSlackClient(teamId: string): Promise<WebClient | null> {
+  const tokenData = await redis.get(`slack_token:${teamId}`)
+  if (!tokenData) return null
+  
+  const data = JSON.parse(tokenData)
+  return new WebClient(data.access_token)
+}
+
+// Helper to get just the token for a team
+export async function getTeamToken(teamId: string): Promise<string | null> {
+  const tokenData = await redis.get(`slack_token:${teamId}`)
+  if (!tokenData) return null
+  
+  const data = JSON.parse(tokenData)
+  return data.access_token
+}
 
 export interface DeploymentRequest {
   tag: string;
@@ -16,15 +36,21 @@ export interface DeploymentRequest {
     message: string;
     author: string;
   };
+  teamId: string; // Add teamId to know which workspace to send to
 }
 
 /**
  * Send a deployment request message to the configured Slack channel
  */
 export async function sendDeploymentRequest(deploymentRequest: DeploymentRequest) {
-  const { tag, commit } = deploymentRequest;
+  const { tag, commit, teamId } = deploymentRequest;
   
-  await slack.chat.postMessage({
+  const teamSlack = await getTeamSlackClient(teamId)
+  if (!teamSlack) {
+    throw new Error(`No Slack token found for team ${teamId}`)
+  }
+  
+  await teamSlack.chat.postMessage({
     channel: deploymentChannelId!,
     blocks: [
       {
@@ -94,8 +120,13 @@ export async function sendDeploymentRequest(deploymentRequest: DeploymentRequest
 /**
  * Send a notification about new commits to the deployment channel
  */
-export async function sendNewCommitNotification(commit: { sha: string; message: string; author: string }) {
-  await slack.chat.postMessage({
+export async function sendNewCommitNotification(commit: { sha: string; message: string; author: string }, teamId: string) {
+  const teamSlack = await getTeamSlackClient(teamId)
+  if (!teamSlack) {
+    throw new Error(`No Slack token found for team ${teamId}`)
+  }
+
+  await teamSlack.chat.postMessage({
     channel: deploymentChannelId!,
     blocks: [
       {
@@ -117,5 +148,3 @@ export async function sendNewCommitNotification(commit: { sha: string; message: 
     ]
   });
 }
-
-export { slack }; 
