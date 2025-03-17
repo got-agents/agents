@@ -8,6 +8,7 @@ import {
   IntentTagPushProd,
   IntentListVercelDeployments,
   IntentPromoteVercelDeployment,
+  IntentListUndeployedVercelCommits,
   NothingToDo,
   Await,
   IntentListGithubWorkflowRuns,
@@ -23,7 +24,7 @@ const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[pro
 // Events and Threads
 export interface Event {
   type: string;
-  data: EmailPayload | NothingToDo | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string;
+  data: EmailPayload | NothingToDo | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentTagPushProd | IntentListUndeployedVercelCommits | Await | IntentListGithubWorkflowRuns | string;
 }
 
 export interface Thread {
@@ -128,7 +129,8 @@ const _handleNextStep = async (
     | IntentPromoteVercelDeployment
     | NothingToDo
     | Await
-    | IntentListGithubWorkflowRuns,
+    | IntentListGithubWorkflowRuns
+    | IntentListUndeployedVercelCommits,
   hl: HumanLayer,
 ): Promise<Thread | false> => {
   thread.events.push({
@@ -211,6 +213,32 @@ const _handleNextStep = async (
     case 'list_vercel_deployments':
       return await appendResult(thread, async () => {
         return vercelClient().getRecentDeployments()
+      })
+    case 'list_undeployed_vercel_commits':
+      return await appendResult(thread, async () => {
+        // First get recent git commits
+        const commits = await listGitCommits({limit: nextStep.limit || 20});
+        
+        // Then get recent vercel deployments
+        const deployments = await vercelClient().getRecentDeployments();
+        
+        // Find commits that don't have corresponding deployments
+        const deployedCommitShas = deployments.recentDeployments.map((d: any) => d.commitSha);
+        const undeployedCommits = commits.filter(commit => 
+          !deployedCommitShas.includes(commit.sha)
+        );
+        
+        return {
+          total: undeployedCommits.length,
+          undeployed_commits: undeployedCommits.map(commit => ({
+            sha: commit.sha,
+            message: commit.message,
+            author: commit.author,
+            date: commit.date,
+            url: commit.url,
+            markdown: `*${commit.message}* (${commit.sha.substring(0, 7)}) by ${commit.author} on ${new Date(commit.date).toLocaleString()}`
+          }))
+        };
       })
     case 'promote_vercel_deployment':
       stateId = await saveThreadState(thread)
