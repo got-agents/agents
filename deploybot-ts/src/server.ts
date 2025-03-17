@@ -15,6 +15,7 @@ import { slack } from './tools/slack'
 import { WebClient } from '@slack/web-api'
 import { handleSlackConnect, SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_REDIRECT_URI, generateOAuthState, verifyOAuthState, getSlackToken, handleSlackSuccess, handleSlackCallback } from './slack_server'
 import { shouldDropEmail as shouldDropEmail } from './server_email'
+import { isPropertyAccessChain } from 'typescript'
 
 const debug: boolean = !!process.env.DEBUG
 const debugDisableWebhookVerification: boolean = process.env.DEBUG_DISABLE_WEBHOOK_VERIFICATION === 'true'
@@ -187,7 +188,8 @@ const newEmailThreadHandler = async (payload: V1Beta1AgentEmailReceived, res: Re
 }
 
 // Add after other env var checks
-const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET
+const webhookSecret = process.env.WEBHOOK_SIGNING_SECRET_NAME ? process.env[process.env.WEBHOOK_SIGNING_SECRET_NAME] : process.env.WEBHOOK_SIGNING_SECRET
+
 if (!webhookSecret) {
   console.error('WEBHOOK_SIGNING_SECRET environment variable is required')
   process.exit(1)

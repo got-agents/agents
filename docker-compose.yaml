@@ -9,6 +9,7 @@ services:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
       DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
       HUMANLAYER_API_KEY_NAME: LINEAR_ASSISTANT_HUMANLAYER_API_KEY
+      WEBHOOK_SIGNING_SECRET_NAME: LINEAR_ASSISTANT_WEBHOOK_SIGNING_SECRET
     volumes:
       - ./linear-assistant-ts/src:/app/src
       - ./linear-assistant-ts/package.json:/app/package.json
@@ -32,6 +33,7 @@ services:
     environment:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
       DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
+      WEBHOOK_SIGNING_SECRET_NAME: DEPLOYBOT_WEBHOOK_SIGNING_SECRET
       HUMANLAYER_API_KEY_NAME: DEPLOYBOT_HUMANLAYER_API_KEY
       SLACK_CLIENT_ID: ${SLACK_CLIENT_ID}
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}

@@ -138,11 +138,6 @@ const _handleNextStep = async (
   let stateId: string | null = null
   switch (nextStep.intent) {
     case 'done_for_now':
-      thread.events.push({
-        type: 'done_for_now',
-        data: nextStep,
-      })
-
       stateId = await saveThreadState(thread)
 
       await hl.createHumanContact({
@@ -151,12 +146,9 @@ const _handleNextStep = async (
           state: { stateId },
         },
       })
+      console.log(`thread sent to humanlayer`)
       return false
     case 'request_more_information':
-      thread.events.push({
-        type: 'request_more_information',
-        data: nextStep,
-      })
 
       stateId = await saveThreadState(thread)
 
@@ -169,10 +161,6 @@ const _handleNextStep = async (
       console.log(`thread sent to humanlayer`)
       return false
     case 'nothing_to_do':
-      thread.events.push({
-        type: 'nothing_to_do',
-        data: nextStep,
-      })
 
       stateId = await saveThreadState(thread)
 
@@ -185,6 +173,7 @@ const _handleNextStep = async (
             state: { stateId },
           }
         })
+        console.log(`thread sent to humanlayer`)
       }
 
       return false
