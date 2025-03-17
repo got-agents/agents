@@ -10,6 +10,12 @@ import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
 import Redis from 'ioredis'
 import { getThreadState } from './state'
+import crypto from 'crypto'
+import { slack } from './tools/slack'
+import { WebClient } from '@slack/web-api'
+import { handleSlackConnect, SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_REDIRECT_URI, generateOAuthState, verifyOAuthState, getSlackToken, handleSlackSuccess, handleSlackCallback } from './slack_server'
+import { shouldDropEmail as shouldDropEmail } from './server_email'
+
 const debug: boolean = !!process.env.DEBUG
 const debugDisableWebhookVerification: boolean = process.env.DEBUG_DISABLE_WEBHOOK_VERIFICATION === 'true'
 
@@ -24,31 +30,10 @@ redis.on('error', err => {
 const app: Express = express()
 const port = process.env.PORT || 8000
 
-const getAllowedEmails = (): Set<string> => {
-  const allowedEmails = process.env.ALLOWED_SOURCE_EMAILS || ''
-  return new Set(
-    allowedEmails
-      .split(',')
-      .map(email => email.trim())
-      .filter(Boolean),
-  )
-}
-
-const getTargetEmails = (): Set<string> => {
-  const targetEmails = process.env.ALLOWED_TARGET_EMAILS || ''
-  return new Set(
-    targetEmails
-      .split(',')
-      .map(email => email.trim())
-      .filter(Boolean),
-  )
-}
-
 const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
   console.log(`new slack thread received: ${JSON.stringify(payload)}`)
 
-  // todo validate allowed users/channels like we do for emails
-
+  // Get team ID and look up token
   const thread: Thread = {
     initial_slack_message: payload.event,
     events: [
@@ -115,6 +100,7 @@ const webhookHandler = (req: Request, res: Response) => {
   const payload = JSON.parse(req.body) as WebhookPayload
   console.log(`event type: ${payload.type}`)
 
+
   switch (payload.type) {
     case 'agent_email.received':
       return newEmailThreadHandler(payload, res)
@@ -141,16 +127,22 @@ app.get('/health', async (req: Request, res: Response) => {
     '<inbound_slack>do we have any commits that need to be deployed?</inbound_slack>',
   )
   res.json({ status: 'ok', nextStep})
-
 })
 
 app.get('/', async (req: Request, res: Response) => {
   res.json({
     welcome: 'to the deploybot assistant',
     instructions: 'https://github.com/got-agents/agents',
+    slack: `${req.protocol}://${req.get('host')}/slack/connect`,
   })
 })
 
+// Slack OAuth routes - MUST be before the 404 handler
+app.get('/slack/connect', handleSlackConnect)
+app.get('/slack/oauth/callback', handleSlackCallback)
+app.get('/slack/oauth/success', handleSlackSuccess)
+
+// 404 handler - MUST be last
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     status: 'error',
@@ -158,57 +150,12 @@ app.use((req: Request, res: Response) => {
   })
 })
 
-app.get('/', (req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'DeployBot Assistant is running',
-  })
-})
-
-
 type WebhookPayload = V1Beta1AgentEmailReceived | V1Beta2SlackEventReceived | V1Beta1HumanContactCompleted | V1Beta1FunctionCallCompleted
 
 const newEmailThreadHandler = async (payload: V1Beta1AgentEmailReceived, res: Response) => {
-  if (payload.is_test || payload.event.from_address === 'overworked-admin@coolcompany.com') {
-    console.log('test email received, skipping')
-    res.json({ status: 'ok', intent: 'test' })
-    return
-  }
-
-  // Check if email is in "Name <email>" format and extract just the email
-  let fromAddress = payload.event.from_address
-  const emailMatch = fromAddress.match(/<(.+?)>/)
-  if (emailMatch) {
-    fromAddress = emailMatch[1]
-  }
-
-  // Extract target email from to_address
-  let toAddress = payload.event.to_address
-  const toEmailMatch = toAddress.match(/<(.+?)>/)
-  if (toEmailMatch) {
-    toAddress = toEmailMatch[1]
-  }
-
-  const allowedEmails = getAllowedEmails()
-  const targetEmails = getTargetEmails()
-  console.log(`allowedEmails: ${Array.from(allowedEmails).join(',')}`)
-  console.log(`targetEmails: ${Array.from(targetEmails).join(',')}`)
-
-  // Check if sender is allowed (if allowlist is configured)
-  if (allowedEmails.size > 0 && !allowedEmails.has(fromAddress)) {
-    console.log(
-      `email from non-allowed sender ${payload.event.from_address} (parsed as ${fromAddress}), skipping`,
-    )
-    res.json({ status: 'ok', intent: 'meh' })
-    return
-  }
-
-  // Check if target email is allowed (if target list is configured)
-  if (targetEmails.size > 0 && !targetEmails.has(toAddress)) {
-    console.log(
-      `email to non-target address ${payload.event.to_address} (parsed as ${toAddress}), skipping`,
-    )
-    res.json({ status: 'ok', intent: 'meh' })
+  const dropReason = shouldDropEmail(payload)
+  if (dropReason) {
+    res.json(dropReason)
     return
   }
 
@@ -266,6 +213,7 @@ const verifyWebhook = (req: Request, res: Response): boolean => {
   }
   return true
 }
+
 export async function serve() {
   app.listen(port, async () => {
     const apiBase = process.env.HUMANLAYER_API_BASE || 'http://host.docker.internal:8080/humanlayer/v1'
@@ -283,5 +231,3 @@ export async function serve() {
   console.log(`Server running at http://localhost:${port}`)
   })
 }
-
-

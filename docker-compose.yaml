@@ -33,6 +33,9 @@ services:
       ALLOWED_EMAILS: "dexter@humanlayer.dev,austin@humanlayer.dev,sundeep@humanlayer.dev,dan@humanlayer.dev"
       DEBUG_DISABLE_WEBHOOK_VERIFICATION: "true"
       HUMANLAYER_API_KEY_NAME: DEPLOYBOT_HUMANLAYER_API_KEY
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET}
+      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-http://localhost:8001/slack/oauth/callback}
     ports:
       - "8001:8000"
     depends_on:
