@@ -178,7 +178,7 @@ export const appendResult = async (
       data: squashedEvent as string,
     })
   } catch (e) {
-    logger.error(e)
+    logger.error(`error running ${thread.events.slice(-1)[0].type}: ${e}`)
     const errorEvent = await b.SquashResponseContext(
       threadToPrompt(thread),
       `error running ${thread.events.slice(-1)[0].type}: ${e}`,
