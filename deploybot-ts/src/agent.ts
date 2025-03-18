@@ -23,7 +23,19 @@ const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[pro
 // Events and Threads
 export interface Event {
   type: string;
-  data: EmailPayload | NothingToDo | ClarificationRequest | DoneForNow | HumanResponse | IntentListVercelDeployments | IntentPromoteVercelDeployment | IntentListGitCommits | IntentListGitTags | IntentPushGitTag | string;
+  data: EmailPayload | 
+  NothingToDo | 
+  ClarificationRequest | 
+  DoneForNow | 
+  HumanResponse | 
+  IntentListVercelDeployments | 
+  IntentPromoteVercelDeployment | 
+  IntentListGitCommits | 
+  IntentListGitTags | 
+  IntentListGithubWorkflowRuns | 
+  IntentTagPushProd | 
+  Await | 
+  string;
 }
 
 export interface Thread {
