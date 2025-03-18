@@ -14,27 +14,6 @@ export async function getThreadState(stateId: string): Promise<Thread | null> {
   return state ? JSON.parse(state) : null
 }
 
-export const getThreadBySlackThreadId = async (teamId: string, channelId: string, threadTs: string): Promise<Thread | null> => {
-  const compositeKey = `${teamId}:${channelId}:${threadTs}`;
-  const stateId = await redis.get(`slack_thread:${compositeKey}`);
-  
-  if (stateId) {
-    return getThreadState(stateId);
-  }
-  
-  return null;
-};
-
-export const saveThreadWithSlackId = async (thread: Thread, teamId: string, channelId: string, threadTs: string): Promise<string> => {
-  const stateId = await saveThreadState(thread);
-  const compositeKey = `${teamId}:${channelId}:${threadTs}`;
-  
-  // Save mapping from slack thread to state ID
-  await redis.set(`slack_thread:${compositeKey}`, stateId);
-  
-  return stateId;
-};
-
 export async function getSlackTokenForTeam(teamId: string): Promise<string | null> {
   try {
     const tokenData = await redis.get(`slack_token:${teamId}`)

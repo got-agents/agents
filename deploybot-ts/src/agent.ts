@@ -151,17 +151,14 @@ const _handleNextStep = async (
   switch (nextStep.intent) {
     case 'done_for_now':
       stateId = await saveThreadState(thread)
-
-      try {
-        await hl.createHumanContact({
-          spec: {
-            msg: nextStep.message,
-            state: { stateId },
-          },
-        })
-      } catch (e) {
-        console.error('Error creating human contact:', e)
-      }
+      
+      await hl.createHumanContact({
+        spec: {
+          msg: nextStep.message,
+          state: { stateId },
+        },
+      })
+      
       console.log(`thread sent to humanlayer`)
       return false
     case 'request_more_information':
@@ -272,7 +269,7 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
         channel_or_user_id: thread.initial_slack_message?.channel_id || "",
         experimental_slack_blocks: true,
         bot_token: slackBotToken || undefined,
-       //thread_ts: thread.initial_slack_message?.thread_ts || undefined,
+        thread_ts: thread.initial_slack_message?.thread_ts || undefined,
       }
     }
   } else if (thread.initial_email) {
