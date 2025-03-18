@@ -9,7 +9,7 @@ import { Thread } from './agent'
 import { handleHumanResponse, handleNextStep, stringifyToYaml } from './agent'
 import { Webhook } from 'svix'
 import Redis from 'ioredis'
-import { getThreadState } from './state'
+import { getThreadBySlackThreadId, getThreadState, saveThreadState } from './state'
 import crypto from 'crypto'
 import { slack } from './tools/slack'
 import { WebClient } from '@slack/web-api'
@@ -32,22 +32,88 @@ const app: Express = express()
 const port = process.env.PORT || 8000
 
 const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
-  console.log(`new slack thread received: ${JSON.stringify(payload)}`)
-
-  // Get team ID and look up token
-  const thread: Thread = {
-    initial_slack_message: payload.event,
-    events: [
-      {
+  console.log(`slack message received: ${JSON.stringify(payload)}`);
+  
+  const slackEvent = payload.event;
+  
+  // Create a composite key for the thread
+  const threadKey = `${slackEvent.team_id}:${slackEvent.channel_id}:${slackEvent.thread_ts}`;
+  
+  // Create a unique key for this specific message to prevent duplicate processing
+  const latestMessageTs = slackEvent.events?.[0]?.message_ts;
+  const messageKey = `processed:${slackEvent.team_id}:${slackEvent.channel_id}:${latestMessageTs}`;
+  
+  // Check if we've already processed this specific message
+  const alreadyProcessed = await redis.get(messageKey);
+  if (alreadyProcessed) {
+    console.log(`Message ${latestMessageTs} already processed, skipping`);
+    res.json({ status: 'ok' });
+    return;
+  }
+  
+  // Mark this message as processed to prevent duplicate processing
+  await redis.set(messageKey, 'processed', 'EX', 3600); // Expire after 1 hour
+  
+  // Check if this is a message in an existing thread
+  const existingThreadStateId = await redis.get(`slack_thread:${threadKey}`);
+  let thread: Thread;
+  
+  if (existingThreadStateId) {
+    // This is a message in an existing thread
+    console.log(`Found existing thread ${existingThreadStateId} for message in thread ${slackEvent.thread_ts}`);
+    const existingThread = await getThreadState(existingThreadStateId);
+    
+    if (existingThread) {
+      thread = existingThread;
+      // Add the new message to the thread events
+      thread.events.push({
         type: 'slack_message_received',
         data: stringifyToYaml(payload),
-      },
-    ],
+      });
+    } else {
+      // Handle case where thread state is missing
+      console.log(`Thread state with ID ${existingThreadStateId} not found, creating new thread`);
+      thread = {
+        initial_slack_message: slackEvent,
+        events: [
+          {
+            type: 'slack_message_received',
+            data: stringifyToYaml(payload),
+          },
+        ],
+      };
+    }
+  } else {
+    // This is a new thread
+    console.log(`No existing thread found for ${threadKey}, creating new thread`);
+    thread = {
+      initial_slack_message: slackEvent,
+      events: [
+        {
+          type: 'slack_message_received',
+          data: stringifyToYaml(payload),
+        },
+      ],
+    };
   }
+  
+  // Send an immediate response to avoid timeouts
+  res.json({ status: 'ok' });
+  
+  // Process the thread asynchronously
   Promise.resolve().then(async () => {
-    await handleNextStep(thread)
-  })
-  res.json({ status: 'ok' })
+    try {
+      // Save thread state with reference to the thread
+      const stateId = await saveThreadState(thread);
+      
+      // Save mapping from thread key to state ID for future lookup
+      await redis.set(`slack_thread:${threadKey}`, stateId);
+      
+      await handleNextStep(thread);
+    } catch (error) {
+      console.error('Error processing thread:', error);
+    }
+  });
 }
 
 const callCompletedHandler = async (
@@ -94,6 +160,19 @@ const callCompletedHandler = async (
 }
 
 const webhookHandler = (req: Request, res: Response) => {
+  // Return challenge parameter if present (required for Slack URL verification)
+  // if (req.body) {
+  //   try {
+  //     const body = JSON.parse(req.body);
+  //     if (body.challenge) {
+  //       res.json({ challenge: body.challenge });
+  //       return;
+  //     }
+  //   } catch (e) {
+  //     // Continue if body is not valid JSON
+  //   }
+  // }
+
   if (!debugDisableWebhookVerification && !verifyWebhook(req, res)) {
     return
   }
