@@ -6,6 +6,8 @@ SLACK_CHANNEL_ID ?= C07HR5LJ0KT
 SLACK_TEAM_ID ?= 
 SLACK_USER_ID ?= U07HR5DNQBB
 THREAD_TS ?= 1741484452358769
+# Define a literal comma for use in conditionals
+COMMA := ,
 
 .PHONY: test-curl-new-thread
 test-curl-new-thread:
@@ -18,7 +20,7 @@ test-curl-new-thread:
 			"event": { \
 				"thread_ts": "$(THREAD_TS)", \
 				"channel_id": "$(SLACK_CHANNEL_ID)", \
-				$(if $(SLACK_TEAM_ID),"team_id": "$(SLACK_TEAM_ID)",) \
+				$(if $(SLACK_TEAM_ID),"team_id": "$(SLACK_TEAM_ID)"$(COMMA)) \
 				"events": [ \
 					{ \
 						"from_user_id": "$(SLACK_USER_ID)", \
@@ -42,7 +44,7 @@ test-curl-list-vercel-deployments:
 			"event": { \
 				"thread_ts": "$(THREAD_TS)", \
 				"channel_id": "$(SLACK_CHANNEL_ID)", \
-				$(if $(SLACK_TEAM_ID),"team_id": "$(SLACK_TEAM_ID)",) \
+				$(if $(SLACK_TEAM_ID),"team_id": "$(SLACK_TEAM_ID)"$(COMMA)) \
 				"events": [ \
 					{ \
 						"from_user_id": "$(SLACK_USER_ID)", \
