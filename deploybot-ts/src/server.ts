@@ -13,7 +13,20 @@ import { getThreadState } from './state'
 import crypto from 'crypto'
 import { slack } from './tools/slack'
 import { WebClient } from '@slack/web-api'
-import { handleSlackConnect, SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SLACK_REDIRECT_URI, generateOAuthState, verifyOAuthState, getSlackToken, handleSlackSuccess, handleSlackCallback } from './slack_server'
+import { 
+  handleSlackConnect, 
+  SLACK_CLIENT_ID, 
+  SLACK_CLIENT_SECRET, 
+  SLACK_REDIRECT_URI, 
+  SLACK_BOT_TOKEN,
+  SLACK_AUTH_MODE,
+  ALLOWED_SLACK_USER_IDS,
+  generateOAuthState, 
+  verifyOAuthState, 
+  getSlackToken, 
+  handleSlackSuccess, 
+  handleSlackCallback 
+} from './slack_server'
 import { shouldDropEmail as shouldDropEmail } from './server_email'
 import { isPropertyAccessChain } from 'typescript'
 
@@ -34,7 +47,25 @@ const port = process.env.PORT || 8000
 const newSlackThreadHandler = async (payload: V1Beta2SlackEventReceived, res: Response) => {
   console.log(`new slack thread received: ${JSON.stringify(payload)}`)
 
-  // Get team ID and look up token
+  // Check if user is allowed (if allowlist is configured)
+  if (ALLOWED_SLACK_USER_IDS.size > 0) {
+    const fromUserId = payload.event.events?.[0]?.from_user_id
+    if (!fromUserId || !ALLOWED_SLACK_USER_IDS.has(fromUserId)) {
+      console.log(`Slack message from non-allowed user ${fromUserId}, skipping`)
+      res.json({ status: 'ok', intent: 'user_not_allowed' })
+      return
+    }
+  }
+
+  // Get team ID and validate with auth mode
+  const teamId = payload.event.team_id;
+  if (!teamId) {
+    console.error('No team ID in Slack event payload');
+    res.json({ status: 'error', intent: 'no_team_id' });
+    return;
+  }
+  
+  // Create the thread state
   const thread: Thread = {
     initial_slack_message: payload.event,
     events: [
@@ -124,24 +155,48 @@ app.post(
 
 // Basic health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
-  const nextStep = await b.DetermineNextStep(
-    '<inbound_slack>do we have any commits that need to be deployed?</inbound_slack>',
-  )
-  res.json({ status: 'ok', nextStep})
-})
+  res.json({ status: 'ok' });
+});
 
 app.get('/', async (req: Request, res: Response) => {
-  res.json({
+  const response: any = {
     welcome: 'to the deploybot assistant',
     instructions: 'https://github.com/got-agents/agents',
-    slack: `${req.protocol}://${req.get('host')}/slack/connect`,
-  })
-})
+  };
+  
+  // Only include slack connect link in multitenant mode
+  if (SLACK_AUTH_MODE === 'multitenant' && SLACK_CLIENT_ID) {
+    response.slack = `${req.protocol}://${req.get('host')}/slack/connect`;
+  }
+  
+  res.json(response);
+});
 
-// Slack OAuth routes - MUST be before the 404 handler
-app.get('/slack/connect', handleSlackConnect)
-app.get('/slack/oauth/callback', handleSlackCallback)
-app.get('/slack/oauth/success', handleSlackSuccess)
+/**
+ * Slack Authentication Modes:
+ * 
+ * 1. Multitenant Mode (SLACK_AUTH_MODE=multitenant):
+ *    - Requires SLACK_CLIENT_ID and SLACK_CLIENT_SECRET
+ *    - Uses OAuth flow to connect to multiple Slack workspaces
+ *    - Mounts /slack/connect, /slack/oauth/callback, and /slack/oauth/success routes
+ *    - Stores tokens in Redis by team ID
+ * 
+ * 2. Singletenant Mode (SLACK_AUTH_MODE=singletenant):
+ *    - Requires SLACK_BOT_TOKEN
+ *    - Uses a single bot token for one workspace
+ *    - No OAuth routes mounted
+ *    - Simpler setup for internal deployments
+ * 
+ * Both modes support restricting allowed Slack users via ALLOWED_SLACK_USER_IDS
+ */
+if (SLACK_AUTH_MODE === 'multitenant' && SLACK_CLIENT_ID && SLACK_CLIENT_SECRET) {
+  console.log('Mounting Slack OAuth routes for multitenant mode');
+  app.get('/slack/connect', handleSlackConnect);
+  app.get('/slack/oauth/callback', handleSlackCallback);
+  app.get('/slack/oauth/success', handleSlackSuccess);
+} else {
+  console.log(`Slack OAuth routes not mounted - auth mode: ${SLACK_AUTH_MODE}`);
+}
 
 // 404 handler - MUST be last
 app.use((req: Request, res: Response) => {

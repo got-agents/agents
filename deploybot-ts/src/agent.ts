@@ -208,6 +208,12 @@ const _handleNextStep = async (
       })
     case 'tag_push_prod':
       stateId = await saveThreadState(thread)
+      
+      // Get allowed responders from environment if configured
+      const tagPushAllowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+        process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+        undefined
+      
       await hl.createFunctionCall({
         spec: {
           fn: 'tag_push_prod',
@@ -217,6 +223,13 @@ const _handleNextStep = async (
             previous_commit: nextStep.previous_commit.markdown,
           },
           state: { stateId },
+          channel: {
+            slack: {
+              channel_or_user_id: thread.initial_slack_message?.channel_id || "",
+              // @ts-ignore - This property exists in the API but not in the type definition
+              allowed_responder_ids: tagPushAllowedResponders,
+            }
+          }
         },
       })
       return false
@@ -226,15 +239,27 @@ const _handleNextStep = async (
       })
     case 'promote_vercel_deployment':
       stateId = await saveThreadState(thread)
+      
+      // Get allowed responders from environment if configured
+      const deploymentAllowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+        process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+        undefined
       await hl.createFunctionCall({
         spec: {
           fn: 'promote_vercel_deployment',
-            kwargs: {
-              new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
-              new_deployment: nextStep.vercel_deployment.markdown,
-              previous_deployment: nextStep.previous_deployment.markdown,
-            },
+          kwargs: {
+            new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
+            new_deployment: nextStep.vercel_deployment.markdown,
+            previous_deployment: nextStep.previous_deployment.markdown,
+          },
           state: { stateId },
+          channel: {
+            slack: {
+              channel_or_user_id: thread.initial_slack_message?.channel_id || "",
+              // @ts-ignore - This property exists in the API but not in the type definition
+              allowed_responder_ids: deploymentAllowedResponders,
+            }
+          }
         },
       })
       return false
@@ -263,11 +288,19 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
     
     const slackBotToken = await getSlackTokenForTeam(teamId)
     
+    // Get allowed responders from environment if configured
+    const allowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+      process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+      undefined
+    
+    // Using a type assertion to add the allowed_responder_ids property
     contactChannel = {
       slack: {
         channel_or_user_id: thread.initial_slack_message?.channel_id || "",
         experimental_slack_blocks: true,
         bot_token: slackBotToken || undefined,
+        // @ts-ignore - This property exists in the API but not in the type definition
+        allowed_responder_ids: allowedResponders,
       }
     }
   } else if (thread.initial_email) {
