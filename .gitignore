@@ -1,3 +1,4 @@
 redis-data/
 .env
 CLAUDE.md
+**/Makefile.local
