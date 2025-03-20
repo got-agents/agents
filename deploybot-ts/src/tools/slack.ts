@@ -38,15 +38,21 @@ async function getTeamSlackClient(teamId: string): Promise<WebClient | null> {
 export async function getTeamToken(teamId: string): Promise<string | null> {
   // If in single-tenant mode with a bot token, always use that
   if (botToken) {
+    console.log(`Using environment bot token for team ${teamId} in single-tenant mode`);
     return botToken;
   }
   
   // Otherwise in multi-tenant mode, look up the token by team ID
-  const tokenData = await redis.get(`slack_token:${teamId}`)
-  if (!tokenData) return null
+  console.log(`Attempting to find token for team ${teamId} in Redis`);
+  const tokenData = await redis.get(`slack_token:${teamId}`);
+  if (!tokenData) {
+    console.log(`No token found in Redis for team ${teamId}`);
+    return null;
+  }
   
-  const data = JSON.parse(tokenData)
-  return data.access_token
+  console.log(`Found token in Redis for team ${teamId}`);
+  const data = JSON.parse(tokenData);
+  return data.access_token;
 }
 
 export interface DeploymentRequest {

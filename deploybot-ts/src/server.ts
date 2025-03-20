@@ -276,15 +276,30 @@ export async function serve() {
     const apiBase = process.env.HUMANLAYER_API_BASE || 'http://host.docker.internal:8080/humanlayer/v1'
     console.log(`humanlayer api base: ${apiBase}`)
 
-  console.log(`fetching project from ${apiBase}/project using ${process.env.HUMANLAYER_API_KEY_NAME}`)
+    // Log Slack configuration
+    console.log('-------------------------------------')
+    console.log(`🤖 Slack Authentication Mode: ${SLACK_AUTH_MODE}`)
+    if (SLACK_AUTH_MODE === 'singletenant') {
+      console.log(`👉 Using bot token: ${SLACK_BOT_TOKEN ? 'YES ✓' : 'NO ❌ - required for singletenant mode'}`)
+    } else {
+      console.log(`👉 OAuth credentials: ${SLACK_CLIENT_ID && SLACK_CLIENT_SECRET ? 'OK ✓' : 'MISSING ❌ - may not work properly'}`)
+      console.log(`👉 Mounting OAuth routes: ${SLACK_CLIENT_ID && SLACK_CLIENT_SECRET ? 'YES ✓' : 'NO ❌'}`)
+    }
+    
+    console.log(`👉 User restrictions: ${ALLOWED_SLACK_USER_IDS.size > 0 
+      ? `Active - ${ALLOWED_SLACK_USER_IDS.size} authorized user(s)` 
+      : 'None - all users allowed'}`)
+    console.log('-------------------------------------')
 
-  const project = await fetch(`${apiBase}/project`, {
-    headers: {
-      Authorization: `Bearer ${HUMANLAYER_API_KEY}`,
-    },
-  })
-  console.log(await project.json())
+    console.log(`fetching project from ${apiBase}/project using ${process.env.HUMANLAYER_API_KEY_NAME}`)
 
-  console.log(`Server running at http://localhost:${port}`)
+    const project = await fetch(`${apiBase}/project`, {
+      headers: {
+        Authorization: `Bearer ${HUMANLAYER_API_KEY}`,
+      },
+    })
+    console.log(await project.json())
+
+    console.log(`Server running at http://localhost:${port}`)
   })
 }
