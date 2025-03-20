@@ -7,6 +7,16 @@ import { slack } from './tools/slack'
 export const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID
 export const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET
 export const SLACK_REDIRECT_URI = process.env.SLACK_REDIRECT_URI || 'http://localhost:8001/slack/oauth/callback'
+export const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN
+// Auto-detect auth mode based on available credentials if not explicitly set
+export const SLACK_AUTH_MODE = process.env.SLACK_AUTH_MODE || 
+  (SLACK_BOT_TOKEN ? 'singletenant' : 
+   (SLACK_CLIENT_ID && SLACK_CLIENT_SECRET ? 'multitenant' : 'multitenant'))
+
+// Get allowed user IDs from environment
+export const ALLOWED_SLACK_USER_IDS = process.env.ALLOWED_SLACK_USER_IDS 
+  ? new Set(process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()))
+  : new Set<string>()
 
 const redis = new Redis(process.env.REDIS_CACHE_URL || 'redis://redis:6379/1')
 

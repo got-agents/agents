@@ -393,6 +393,15 @@ To set up the deploybot:
 For development:
 - Use `npm run dev` for hot-reloading during development
 
+### Testing locally
+
+To test the local development setup:
+
+1. Copy `Makefile.local.example` to `Makefile.local` and customize with your Slack workspace details
+2. Run test commands using `make test-curl-new-thread` or `make test-curl-list-vercel-deployments`
+
+This approach keeps your local testing configuration separate from the main Makefile, preventing accidental commits of your personal settings.
+
 ## Deployment
 
 The deploybot can be deployed using:

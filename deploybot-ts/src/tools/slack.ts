@@ -8,13 +8,27 @@ if (!deploymentChannelId) {
   console.warn('SLACK_DEPLOYMENT_CHANNEL_ID not set - some Slack features will be disabled');
 }
 
-// Initialize with no token for OAuth flows
-export const slack = new WebClient();
+// Get bot token from environment if in single-tenant mode
+const botToken = process.env.SLACK_BOT_TOKEN;
+
+// Initialize with token if available, or with no token for OAuth flows
+export const slack = botToken ? new WebClient(botToken) : new WebClient();
 
 // Helper to get a team-specific Slack client
 async function getTeamSlackClient(teamId: string): Promise<WebClient | null> {
+  // If in single-tenant mode with a bot token, always use that
+  if (botToken) {
+    console.log('Using bot token from environment in single-tenant mode');
+    return slack;
+  }
+  
+  // Otherwise in multi-tenant mode, look up the token by team ID
+  console.log(`Looking up token for team ${teamId} in multi-tenant mode`);
   const tokenData = await redis.get(`slack_token:${teamId}`)
-  if (!tokenData) return null
+  if (!tokenData) {
+    console.error(`No Slack token found for team ${teamId}`);
+    return null;
+  }
   
   const data = JSON.parse(tokenData)
   return new WebClient(data.access_token)
@@ -22,11 +36,23 @@ async function getTeamSlackClient(teamId: string): Promise<WebClient | null> {
 
 // Helper to get just the token for a team
 export async function getTeamToken(teamId: string): Promise<string | null> {
-  const tokenData = await redis.get(`slack_token:${teamId}`)
-  if (!tokenData) return null
+  // If in single-tenant mode with a bot token, always use that
+  if (botToken) {
+    console.log(`Using environment bot token for team ${teamId} in single-tenant mode`);
+    return botToken;
+  }
   
-  const data = JSON.parse(tokenData)
-  return data.access_token
+  // Otherwise in multi-tenant mode, look up the token by team ID
+  console.log(`Attempting to find token for team ${teamId} in Redis`);
+  const tokenData = await redis.get(`slack_token:${teamId}`);
+  if (!tokenData) {
+    console.log(`No token found in Redis for team ${teamId}`);
+    return null;
+  }
+  
+  console.log(`Found token in Redis for team ${teamId}`);
+  const data = JSON.parse(tokenData);
+  return data.access_token;
 }
 
 export interface DeploymentRequest {

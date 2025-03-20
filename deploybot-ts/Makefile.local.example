@@ -1,0 +1,8 @@
+# Local Makefile settings
+# Copy this file to Makefile.local and customize for your environment
+
+# Slack settings for test commands
+SLACK_CHANNEL_ID = C06QMLHAYP3
+SLACK_TEAM_ID = T05L27H2WUX
+SLACK_USER_ID = U07HR5DNQBB
+THREAD_TS = 1741484452358769
