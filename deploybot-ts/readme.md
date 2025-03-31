@@ -2,6 +2,12 @@
 
 An e2e whitelabeled humanlayer integration to help out with deployments
 
+
+
+https://github.com/user-attachments/assets/60b56aeb-ceaf-41c1-b7df-573e4f2d1bb5
+
+
+
 ## Capabilities
 
 - promote a vercel deployment in the production app
