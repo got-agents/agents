@@ -151,13 +151,14 @@ const _handleNextStep = async (
   switch (nextStep.intent) {
     case 'done_for_now':
       stateId = await saveThreadState(thread)
-
+      
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
           state: { stateId },
         },
       })
+      
       console.log(`thread sent to humanlayer`)
       return false
     case 'request_more_information':
@@ -187,7 +188,7 @@ const _handleNextStep = async (
         })
         console.log(`thread sent to humanlayer`)
       }
-
+ 
       return false
     case 'await':
       // todo we should have a tool to do this durably :slight_smile:
@@ -268,6 +269,7 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
         channel_or_user_id: thread.initial_slack_message?.channel_id || "",
         experimental_slack_blocks: true,
         bot_token: slackBotToken || undefined,
+        thread_ts: thread.initial_slack_message?.thread_ts || undefined,
       }
     }
   } else if (thread.initial_email) {
