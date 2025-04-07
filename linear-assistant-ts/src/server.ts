@@ -11,6 +11,7 @@ import {
 } from './baml_client'
 
 import { handleHumanResponse, handleNextStep, threadToPrompt, Thread, Event, newLogger, _handleNextStep } from './agent'
+import { getThreadState } from './state'
 
 const linearClient = new LinearClient({ apiKey: process.env.LINEAR_API_KEY })
 const loops = process.env.LOOPS_API_KEY ? new LoopsClient(process.env.LOOPS_API_KEY) : undefined
@@ -206,8 +207,14 @@ const callCompletedHandler = async (
   res.json({ status: 'ok' })
 
   Promise.resolve().then(async () => {
-    let thread: Thread
-    thread = humanResponse.spec.state as Thread
+    const { stateId } = humanResponse.spec.state as { stateId: string }
+    const thread = await getThreadState(stateId)
+    if (!thread) {
+      console.error(`thread not found for stateId ${stateId}`)
+      res.status(400)
+      res.json({ status: 'error', error: `thread not found for stateId ${stateId}` })
+      return
+    }
     const logger = newLogger(thread.id)
     logger.log(`human_response received: ${JSON.stringify(humanResponse)}`)
     try {

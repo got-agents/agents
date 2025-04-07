@@ -22,6 +22,7 @@ import {
 import * as yaml from 'js-yaml'
 import { createHash } from 'crypto'
 import { EmailPayload } from './vendored'
+import { saveThreadState } from './state'
 const HUMANLAYER_API_KEY = process.env.HUMANLAYER_API_KEY_NAME ? process.env[process.env.HUMANLAYER_API_KEY_NAME] : process.env.HUMANLAYER_API_KEY
 
 export const newLogger = (id: string) => {
@@ -217,6 +218,7 @@ export const _handleNextStep = async (
   redis?: any,
 ): Promise<Thread | false> => {
   const logger = newLogger(thread.id)
+  let stateId: string 
   switch (nextStep.intent) {
     case 'done_for_now':
       thread.events.push({
@@ -224,10 +226,14 @@ export const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: {
+            stateId,
+          },
         },
       })
       return false
@@ -237,10 +243,14 @@ export const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       await hl.createHumanContact({
         spec: {
           msg: nextStep.message,
-          state: thread,
+          state: {
+            stateId,
+          },
         },
       })
       logger.log(`thread sent to humanlayer`)
@@ -251,12 +261,16 @@ export const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       try {
         await hl.createFunctionCall({
           spec: {
             fn: 'create_issue',
           kwargs: nextStep.issue,
-          state: thread,
+          state: {
+            stateId,
+          },
         },
       })
       } catch (e) {
@@ -270,6 +284,8 @@ export const _handleNextStep = async (
         type: 'add_comment',
         data: nextStep,
       })
+      stateId = await saveThreadState(thread)
+
       await hl.createFunctionCall({
         spec: {
           fn: 'add_comment',
@@ -278,7 +294,9 @@ export const _handleNextStep = async (
             comment: nextStep.comment,
             view_issue_url: nextStep.view_issue_url,
           },
-          state: thread,
+          state: {
+            stateId,
+          },
         },
       })
       return false
@@ -420,11 +438,15 @@ export const _handleNextStep = async (
         data: nextStep,
       })
 
+      stateId = await saveThreadState(thread)
+
       await hl.createFunctionCall({
         spec: {
           fn: 'add_user_to_loops_mailing_list',
           kwargs: nextStep,
-          state: thread,
+          state: {
+            stateId,
+          },
         },
       })
       return false
