@@ -1,5 +1,1 @@
-Agents 
-
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/got-agents/agents)
-
+a few agents that embody the principles in [12 factor agents](https://github.com/humanlayer/12-factor-agents)
