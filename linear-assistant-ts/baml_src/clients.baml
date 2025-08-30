@@ -97,3 +97,17 @@ retry_policy Exponential {
     max_delay_ms 10000
   }
 }
+
+client<llm> OpenRouterGPTOSS20B {
+  provider "openai-generic"
+  retry_policy Exponential
+  options {
+    base_url "https://openrouter.ai/api/v1"
+    api_key env.OPENROUTER_API_KEY
+    model "openai/gpt-oss-20b"
+    headers {
+      "HTTP-Referer" "linear-assistant"
+      "X-Title" "Linear Assistant"
+    }
+  }
+}
