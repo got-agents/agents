@@ -63,12 +63,22 @@ export type V1Beta1HumanContactCompleted = {
   type: 'human_contact.completed'
 }
 
+// Original SlackChannelConfig from HumanLayer
 export interface SlackChannelConfig {
-  allowed_responder_ids?: string[];
-  bot_token?: string;
+  allowed_responder_ids?: string[] | null;
+  bot_token?: string | null;
   channel_or_user_id: string;
-  context_about_channel_or_user?: string;
-  experimental_slack_blocks?: boolean;
+  context_about_channel_or_user?: string | null;
+  experimental_slack_blocks?: boolean | null;
+}
+
+// Input version of SlackContactChannel for API calls
+export interface SlackContactChannel_Input {
+  channel_or_user_id: string;
+  context_about_channel_or_user?: string | null;
+  bot_token?: string | null;
+  allowed_responder_ids?: string[] | null;
+  experimental_slack_blocks?: boolean | null;
 }
 
 export interface ChannelConfig {

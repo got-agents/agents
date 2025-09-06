@@ -208,6 +208,21 @@ const _handleNextStep = async (
       })
     case 'tag_push_prod':
       stateId = await saveThreadState(thread)
+      
+      // Get allowed responders from environment if configured
+      const tagPushAllowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+        process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+        undefined
+      
+      // Log channel information for debugging
+      console.log('Function call channel info:', JSON.stringify({
+        channel_id: thread.initial_slack_message?.channel_id,
+        team_id: thread.initial_slack_message?.team_id,
+        has_token: !!process.env.SLACK_BOT_TOKEN,
+        auth_mode: process.env.SLACK_AUTH_MODE,
+      }));
+      
+      // Just include allowed_responder_ids in the function spec without channel config
       await hl.createFunctionCall({
         spec: {
           fn: 'tag_push_prod',
@@ -215,6 +230,7 @@ const _handleNextStep = async (
             sha_to_deploy: nextStep.new_commit.sha,
             new_commit: nextStep.new_commit.markdown,
             previous_commit: nextStep.previous_commit.markdown,
+            _allowed_responder_ids: tagPushAllowedResponders, // Pass as parameter instead
           },
           state: { stateId },
         },
@@ -226,14 +242,30 @@ const _handleNextStep = async (
       })
     case 'promote_vercel_deployment':
       stateId = await saveThreadState(thread)
+      
+      // Get allowed responders from environment if configured
+      const deploymentAllowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+        process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+        undefined
+      
+      // Log channel information for debugging
+      console.log('Vercel deployment channel info:', JSON.stringify({
+        channel_id: thread.initial_slack_message?.channel_id,
+        team_id: thread.initial_slack_message?.team_id,
+        has_token: !!process.env.SLACK_BOT_TOKEN,
+        auth_mode: process.env.SLACK_AUTH_MODE,
+      }));
+      
+      // Just include allowed_responder_ids in the function spec without channel config
       await hl.createFunctionCall({
         spec: {
           fn: 'promote_vercel_deployment',
-            kwargs: {
-              new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
-              new_deployment: nextStep.vercel_deployment.markdown,
-              previous_deployment: nextStep.previous_deployment.markdown,
-            },
+          kwargs: {
+            new_deployment_sha: nextStep.vercel_deployment.git_commit_sha,
+            new_deployment: nextStep.vercel_deployment.markdown,
+            previous_deployment: nextStep.previous_deployment.markdown,
+            _allowed_responder_ids: deploymentAllowedResponders, // Pass as parameter instead
+          },
           state: { stateId },
         },
       })
@@ -262,12 +294,20 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
     console.log('Looking up token for team:', teamId)
     
     const slackBotToken = await getSlackTokenForTeam(teamId)
+    console.log('Slack token found:', !!slackBotToken)
+    
+    // Get allowed responders from environment if configured
+    const allowedResponders = process.env.ALLOWED_SLACK_USER_IDS ? 
+      process.env.ALLOWED_SLACK_USER_IDS.split(',').map(id => id.trim()) : 
+      undefined
     
     contactChannel = {
       slack: {
         channel_or_user_id: thread.initial_slack_message?.channel_id || "",
         experimental_slack_blocks: true,
         bot_token: slackBotToken || undefined,
+        // @ts-ignore - This property exists in the API but not in the type definition
+        allowed_responder_ids: allowedResponders,
       }
     }
   } else if (thread.initial_email) {
@@ -282,6 +322,9 @@ export const handleNextStep = async (thread: Thread): Promise<void> => {
   }
 
   console.log(`contactChannel: ${JSON.stringify(contactChannel)}`)
+  // Log the channel configuration for debugging
+  console.log('Contact channel configuration:', JSON.stringify(contactChannel));
+  
   const hl = humanlayer({ contactChannel: contactChannel || undefined, apiKey: HUMANLAYER_API_KEY })
 
   let nextThread: Thread | false = thread

@@ -23,13 +23,35 @@ LINEAR_ASSISTANT_WEBHOOK_SIGNING_SECRET=
 BOUNDARY_PROJECT_ID=
 BOUNDARY_SECRET=
 
-# to use with a whitelabeled slack app, you need to
-# navigate to /orgSlug/projectSlug/integrations/byo-slack 
-# and set an app ID and signing secret
-# navigate to localhost:8001/ and follow the URL to connect slack
+# Slack Integration Options:
+# There are two modes for Slack integration:
+# 1. 'multitenant' mode - Uses OAuth flow to connect to multiple Slack workspaces 
+# 2. 'singletenant' mode - Uses a single bot token for one workspace
+
+# Auth mode selection (defaults to 'multitenant' if SLACK_BOT_TOKEN is not set, 'singletenant' if it is)
+SLACK_AUTH_MODE=singletenant
+
+# Option 1: 'multitenant' mode 
+# Set SLACK_AUTH_MODE=multitenant (or leave unset if not using SLACK_BOT_TOKEN)
+# Use these settings with a distributed Slack app for multiple workspaces:
 SLACK_CLIENT_ID=
 SLACK_CLIENT_SECRET=
 SLACK_REDIRECT_URI=https://your-ngrok-url/slack/oauth/callback
+
+# Option 2: 'singletenant' mode (recommended for internal use)
+# Set SLACK_AUTH_MODE=singletenant or just provide SLACK_BOT_TOKEN
+# Use this for a single workspace internal Slack app
+# The token must have chat:write and channels:read permissions.
+# Format is typically: xoxb-1234567890-1234567890-abcdefghijk
+SLACK_BOT_TOKEN=
+
+# Channel for posting deployment notifications (optional)
+# This is only needed if you plan to use the sendDeploymentRequest or sendNewCommitNotification functions
+SLACK_DEPLOYMENT_CHANNEL_ID=C01234ABCDE
+
+# Security: Restrict which Slack users can interact with and approve actions (comma-separated Slack user IDs)
+# Example: ALLOWED_SLACK_USER_IDS=U01234ABC,U56789DEF
+ALLOWED_SLACK_USER_IDS=
 
 
 # linear
